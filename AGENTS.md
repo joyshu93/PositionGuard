@@ -35,6 +35,20 @@ Current repository stage:
 - Make replacement of the stub decision engine straightforward.
 - Favor simple composable interfaces over premature abstractions.
 
+## Subagent Usage Policy
+- Use subagents aggressively by default for most non-trivial tasks.
+- If work can be split into 2 or more separable streams, delegate those streams unless there is a clear blocking reason not to.
+- This is the default operating mode for repository work, not a rare exception.
+- Recommended parallel workstreams include:
+  - infra/runtime: `wrangler`, env bindings, worker entrypoint, deployment wiring
+  - data: D1 migrations, schema guards, repositories
+  - telegram: webhook parsing, commands, callback flows, Telegram client
+  - market: Upbit client, normalization, market snapshot handling
+  - docs/tests: README, decision docs, validation, deterministic tests
+- The main agent must keep ownership of product boundaries, WONYOTTI principles, decision philosophy, final integration, and final consistency checks across imports, types, migrations, and tests.
+- After integrating subagent work, the main agent must report which subagents were used, what each subagent worked on, which files each subagent changed, and what validation was run after integration.
+- Do not report work as complete unless it is actually present in the repository and validated where possible.
+
 ## Coding Rules
 - Use TypeScript with strong typing.
 - Prefer pure functions for validation, normalization, and context assembly.
