@@ -1,0 +1,17 @@
+{
+  "name": "position-guard",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node ./node_modules/wrangler/bin/wrangler.js dev",
+    "build": "node ./node_modules/typescript/bin/tsc -p tsconfig.json",
+    "typecheck": "node ./node_modules/typescript/bin/tsc -p tsconfig.json --noEmit",
+    "test": "node ./node_modules/typescript/bin/tsc -p tsconfig.json && node --experimental-specifier-resolution=node .\\dist\\tests\\validation.test.js && node --experimental-specifier-resolution=node .\\dist\\tests\\decision-context.test.js && node --experimental-specifier-resolution=node .\\dist\\tests\\upbit.normalization.test.js"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "typescript": "^5.8.0",
+    "wrangler": "^3.114.0"
+  }
+}
