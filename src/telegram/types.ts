@@ -117,11 +117,55 @@ export interface TelegramOnboardingProvider {
   ): Promise<TelegramOnboardingSnapshot | null>;
 }
 
+export interface TelegramLastDecisionLine {
+  asset: "BTC" | "ETH";
+  status: string;
+  summary: string;
+  createdAt: string;
+  alertOutcome: "sent" | "skipped" | "not_applicable";
+  suppressedBy: string | null;
+}
+
+export interface TelegramLastDecisionSnapshot {
+  trackedAssets: ("BTC" | "ETH")[];
+  lines: TelegramLastDecisionLine[];
+}
+
+export interface TelegramHourlyHealthSnapshot {
+  trackedAssets: ("BTC" | "ETH")[];
+  readiness: {
+    isReady: boolean;
+    missingItems: string[];
+    hasCashRecord: boolean;
+    readyPositionAssets: ("BTC" | "ETH")[];
+  };
+  lastRunAt: string | null;
+  lastDecisionStatus: string | null;
+  marketDataStatus: "ok" | "no_data" | "fetch_failure" | "normalization_failure" | null;
+  recentMarketFailureCount: number;
+  recentCooldownSkipCount: number;
+  recentSleepSuppressionCount: number;
+  recentSetupBlockedCount: number;
+  latestMarketFailureMessage: string | null;
+  latestNotification: {
+    deliveryStatus: "SENT" | "SKIPPED";
+    reasonKey: string | null;
+    suppressedBy: string | null;
+    sentAt: string | null;
+  } | null;
+}
+
+export interface TelegramInspectionProvider {
+  getLastDecisionSnapshot(telegramUserId: number): Promise<TelegramLastDecisionSnapshot | null>;
+  getHourlyHealthSnapshot(telegramUserId: number): Promise<TelegramHourlyHealthSnapshot | null>;
+}
+
 export interface TelegramRouterDependencies {
   stateStore?: TelegramStateStore;
   statusProvider?: TelegramStatusProvider;
   notificationProvider?: TelegramNotificationProvider;
   onboardingProvider?: TelegramOnboardingProvider;
+  inspectionProvider?: TelegramInspectionProvider;
 }
 
 export interface TelegramWebhookContext {
@@ -136,7 +180,9 @@ export type TelegramCallbackAction =
   | { kind: 'setup:progress' }
   | { kind: 'setup:track'; trackedAssets: TelegramTrackedAssetsSelection }
   | { kind: 'setup:cash' }
-  | { kind: 'setup:position'; asset: "BTC" | "ETH" };
+  | { kind: 'setup:position'; asset: "BTC" | "ETH" }
+  | { kind: 'inspect:lastdecision' }
+  | { kind: 'inspect:hourlyhealth' };
 
 export interface TelegramReplyMarkupButton {
   text: string;

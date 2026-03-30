@@ -88,6 +88,11 @@ Notification behavior under this contract should remain conservative:
 - keep message text short, concrete, and record-oriented
 - expose recent alert state through lightweight debug inspection, such as `/lastalert`
 
+Operator visibility should stay read-only and concise:
+- `/lastdecision` should summarize the latest decision status, summary, created time, and alert outcome
+- `/hourlyhealth` should summarize cooldown skips, sleep suppression, setup blocks, and repeated market-data failures
+- neither surface should imply trade execution or discretionary authority
+
 Current MVP readiness semantics are:
 - tracked assets default conservatively to BTC and ETH for users who have not chosen yet
 - readiness requires a cash record plus position records for the chosen tracked assets only

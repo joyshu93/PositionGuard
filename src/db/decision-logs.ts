@@ -93,6 +93,14 @@ export const listDecisionLogsForUser = async (
   return result.results.map(mapDecisionLogRow);
 };
 
+export const getLatestDecisionLogForUser = async (
+  db: D1DatabaseLike,
+  userId: number,
+): Promise<DecisionLogRecord | null> => {
+  const result = await listDecisionLogsForUser(db, userId, 1);
+  return result[0] ?? null;
+};
+
 export const listRecentDecisionLogsForUserAsset = async (
   db: D1DatabaseLike,
   userId: number,

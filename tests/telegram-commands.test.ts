@@ -49,6 +49,57 @@ const onboardingProvider: TelegramOnboardingProvider = {
   },
 };
 
+const inspectionProvider = {
+  async getLastDecisionSnapshot() {
+    return {
+      trackedAssets: ["BTC", "ETH"],
+      lines: [
+        {
+          asset: "BTC",
+          status: "ACTION_NEEDED",
+          summary: "Manual setup is incomplete.",
+          createdAt: "2026-01-01T03:00:00.000Z",
+          alertOutcome: "sent",
+          suppressedBy: null,
+        },
+        {
+          asset: "ETH",
+          status: "NO_ACTION",
+          summary: "No coach action is needed.",
+          createdAt: "2026-01-01T02:00:00.000Z",
+          alertOutcome: "not_applicable",
+          suppressedBy: null,
+        },
+      ],
+    };
+  },
+  async getHourlyHealthSnapshot() {
+    return {
+      trackedAssets: ["BTC", "ETH"],
+      readiness: {
+        isReady: false,
+        missingItems: ["ETH position"],
+        hasCashRecord: true,
+        readyPositionAssets: ["BTC"],
+      },
+      lastRunAt: "2026-01-01T03:00:00.000Z",
+      lastDecisionStatus: "ACTION_NEEDED",
+      marketDataStatus: "fetch_failure",
+      recentMarketFailureCount: 3,
+      recentCooldownSkipCount: 2,
+      recentSleepSuppressionCount: 1,
+      recentSetupBlockedCount: 4,
+      latestMarketFailureMessage: "Upbit request failed (502 Bad Gateway): upstream timeout",
+      latestNotification: {
+        deliveryStatus: "SENT",
+        reasonKey: "btc-setup-incomplete",
+        suppressedBy: null,
+        sentAt: "2026-01-01T03:00:00.000Z",
+      },
+    };
+  },
+};
+
 const baseContext: TelegramCommandContext = {
   update: { update_id: 1 },
   chatId: 200,
@@ -87,13 +138,15 @@ if (startAction && startAction.kind === "sendMessage" && startAction.replyMarkup
   startCallbackData = startAction.replyMarkup.inline_keyboard.flat().map((button) => button.callback_data);
 }
 
-assert(
-  startCallbackData.includes("setup:track:btc") &&
-    startCallbackData.includes("setup:track:eth") &&
-    startCallbackData.includes("setup:track:both") &&
-    startCallbackData.includes("setup:progress"),
-  "/start should expose setup buttons for tracked assets and progress.",
-);
+  assert(
+    startCallbackData.includes("setup:track:btc") &&
+      startCallbackData.includes("setup:track:eth") &&
+      startCallbackData.includes("setup:track:both") &&
+      startCallbackData.includes("setup:progress") &&
+      startCallbackData.includes("inspect:lastdecision") &&
+      startCallbackData.includes("inspect:hourlyhealth"),
+    "/start should expose setup and operator-inspection buttons.",
+  );
 
 const callbackStatusActions = await routeCommand(
   {
@@ -276,9 +329,197 @@ if (alertAction && alertAction.kind === "sendMessage") {
   alertText = alertAction.text;
 }
 
+  assert(
+    alertText.includes("Cooldown until: 2026-01-01T09:00:00.000Z"),
+    "/lastalert should expose cooldown visibility for debugging.",
+  );
+
+const lastDecisionActions = await routeCommand(
+  {
+    ...baseContext,
+    command: "lastdecision",
+    args: [],
+    text: "/lastdecision",
+  },
+  {
+    ...deps,
+    inspectionProvider,
+  },
+);
+
+const lastDecisionAction = lastDecisionActions[0];
+let lastDecisionText = "";
+if (lastDecisionAction && lastDecisionAction.kind === "sendMessage") {
+  lastDecisionText = lastDecisionAction.text;
+}
+
 assert(
-  alertText.includes("Cooldown until: 2026-01-01T09:00:00.000Z"),
-  "/lastalert should expose cooldown visibility for debugging.",
+  lastDecisionText.includes("Last decision:") &&
+    lastDecisionText.includes("BTC: ACTION_NEEDED") &&
+    lastDecisionText.includes("Operational only. No trade was executed."),
+  "/lastdecision should render a compact operational summary.",
+);
+
+const hourlyHealthActions = await routeCommand(
+  {
+    ...baseContext,
+    command: "hourlyhealth",
+    args: [],
+    text: "/hourlyhealth",
+  },
+  {
+    ...deps,
+    inspectionProvider,
+  },
+);
+
+const hourlyHealthAction = hourlyHealthActions[0];
+let hourlyHealthText = "";
+if (hourlyHealthAction && hourlyHealthAction.kind === "sendMessage") {
+  hourlyHealthText = hourlyHealthAction.text;
+}
+
+assert(
+  hourlyHealthText.includes("Hourly health:") &&
+    hourlyHealthText.includes("Market data: fetch_failure") &&
+    hourlyHealthText.includes("Suppression: cooldown 2 | sleep 1 | setup 4"),
+  "/hourlyhealth should render compact operational health details.",
+);
+
+const callbackInspectionActions = await routeCommand(
+  {
+    ...baseContext,
+    command: "callback",
+    text: "inspect:lastdecision",
+    args: [],
+    replyToCallback: {
+      id: "cb-inspect",
+      from: { id: 100, first_name: "Test" },
+      data: "inspect:lastdecision",
+      message: {
+        message_id: 4,
+        date: 1,
+        chat: { id: 200, type: "private" },
+        from: { id: 100, first_name: "Test" },
+        text: "Inspect",
+      },
+    },
+  },
+  {
+    ...deps,
+    inspectionProvider,
+  },
+);
+
+assertEqual(
+  callbackInspectionActions[0]?.kind,
+  "answerCallbackQuery",
+  "inspection callbacks should acknowledge the button press first.",
+);
+assert(
+  callbackInspectionActions.some(
+    (action) => action.kind === "sendMessage" && action.text.includes("Last decision:"),
+  ),
+  "inspection callbacks should route to the compact decision summary.",
+);
+
+const lastDecisionActions = await routeCommand(
+  {
+    ...baseContext,
+    command: "lastdecision",
+    args: [],
+    text: "/lastdecision",
+  },
+  {
+    ...deps,
+    inspectionProvider: {
+      async getLastDecisionSnapshot() {
+        return {
+          trackedAssets: ["BTC"],
+          lines: [
+            {
+              asset: "BTC",
+              status: "ACTION_NEEDED",
+              summary: "Manual setup is incomplete.",
+              createdAt: "2026-01-01T04:00:00.000Z",
+              alertOutcome: "skipped",
+              suppressedBy: "cooldown",
+            },
+          ],
+        };
+      },
+      async getHourlyHealthSnapshot() {
+        return null;
+      },
+    },
+  },
+);
+
+const lastDecisionAction = lastDecisionActions[0];
+let lastDecisionText = "";
+if (lastDecisionAction && lastDecisionAction.kind === "sendMessage") {
+  lastDecisionText = lastDecisionAction.text;
+}
+
+assert(
+  lastDecisionText.includes("Status: ACTION_NEEDED") &&
+    lastDecisionText.includes("Alert: skipped (cooldown)"),
+  "/lastdecision should show the latest decision status and alert outcome.",
+);
+
+const hourlyHealthActions = await routeCommand(
+  {
+    ...baseContext,
+    command: "hourlyhealth",
+    args: [],
+    text: "/hourlyhealth",
+  },
+  {
+    ...deps,
+    inspectionProvider: {
+      async getLastDecisionSnapshot() {
+        return null;
+      },
+      async getHourlyHealthSnapshot() {
+        return {
+          trackedAssets: ["BTC"],
+          readiness: {
+            isReady: false,
+            missingItems: ["cash"],
+            hasCashRecord: false,
+            readyPositionAssets: [],
+          },
+          lastRunAt: "2026-01-01T05:00:00.000Z",
+          lastDecisionStatus: "SETUP_INCOMPLETE",
+          marketDataStatus: "fetch_failure",
+          recentMarketFailureCount: 2,
+          recentCooldownSkipCount: 1,
+          recentSleepSuppressionCount: 1,
+          recentSetupBlockedCount: 3,
+          latestMarketFailureMessage: "Timeout while calling Upbit.",
+          latestNotification: {
+            deliveryStatus: "SKIPPED",
+            reasonKey: "setup:100",
+            suppressedBy: "sleep_mode",
+            sentAt: null,
+          },
+        };
+      },
+    },
+  },
+);
+
+const hourlyHealthAction = hourlyHealthActions[0];
+let hourlyHealthText = "";
+if (hourlyHealthAction && hourlyHealthAction.kind === "sendMessage") {
+  hourlyHealthText = hourlyHealthAction.text;
+}
+
+assert(
+  hourlyHealthText.includes("Recent cooldown skips: 1") &&
+    hourlyHealthText.includes("Recent sleep suppressions: 1") &&
+    hourlyHealthText.includes("Latest market issue: Timeout while calling Upbit."),
+  "/hourlyhealth should surface compact recent health signals.",
 );
 
 const invalidActions = await routeCommand(

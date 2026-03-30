@@ -130,6 +130,12 @@ export function parseTelegramCallbackAction(data: string | undefined): TelegramC
   if (data === 'setup:position:eth') {
     return { kind: 'setup:position', asset: 'ETH' };
   }
+  if (data === 'inspect:lastdecision') {
+    return { kind: 'inspect:lastdecision' };
+  }
+  if (data === 'inspect:hourlyhealth') {
+    return { kind: 'inspect:hourlyhealth' };
+  }
 
   return null;
 }

@@ -1,6 +1,8 @@
 import type {
   TelegramActionNeededReason,
   TelegramCommandContext,
+  TelegramHourlyHealthSnapshot,
+  TelegramLastDecisionSnapshot,
   TelegramOutgoingAction,
   TelegramReplyMarkup,
   TelegramOnboardingSnapshot,
@@ -32,6 +34,10 @@ export function routeCommand(context: TelegramCommandContext, deps: TelegramRout
       return Promise.resolve(bootstrap).then(() => handleSetCash(context, deps));
     case 'setposition':
       return Promise.resolve(bootstrap).then(() => handleSetPosition(context, deps));
+    case 'lastdecision':
+      return Promise.resolve(bootstrap).then(() => handleLastDecision(context, deps));
+    case 'hourlyhealth':
+      return Promise.resolve(bootstrap).then(() => handleHourlyHealth(context, deps));
     case 'lastalert':
       return Promise.resolve(bootstrap).then(() => handleLastAlert(context, deps));
     case 'sleep':
@@ -74,6 +80,14 @@ async function routeCallback(context: TelegramCommandContext, deps: TelegramRout
 
   if (action.kind === 'setup:position') {
     return [answer(callbackQuery.id), ...buildPositionShortcutActions(context, action.asset)];
+  }
+
+  if (action.kind === 'inspect:lastdecision') {
+    return [answer(callbackQuery.id), ...(await handleLastDecision(context, deps))];
+  }
+
+  if (action.kind === 'inspect:hourlyhealth') {
+    return [answer(callbackQuery.id), ...(await handleHourlyHealth(context, deps))];
   }
 
   return [answer(callbackQuery.id), ...(await handleStatus(context, deps))];
@@ -229,6 +243,8 @@ function buildHelpText(): string {
     'Setup buttons below - choose tracked assets and next steps',
     '/setcash <amount> - record available cash',
     '/setposition <BTC|ETH> <quantity> <average-entry-price> - record spot inventory only',
+    '/lastdecision - inspect the latest hourly decision',
+    '/hourlyhealth - inspect recent hourly processing health',
     '/lastalert - inspect the last recorded alert state',
     '/sleep on - pause alerts',
     '/sleep off - resume alerts',
@@ -259,6 +275,10 @@ export function buildOnboardingKeyboard(): TelegramReplyMarkup {
       [
         { text: 'Record ETH', callback_data: 'setup:position:eth' },
         { text: 'Status', callback_data: 'status:refresh' },
+      ],
+      [
+        { text: 'Last decision', callback_data: 'inspect:lastdecision' },
+        { text: 'Hourly health', callback_data: 'inspect:hourlyhealth' },
       ],
     ],
   };
@@ -304,10 +324,39 @@ async function handleLastAlert(
         'Last alert:',
         `Reason: ${snapshot.reason}`,
         `Asset: ${snapshot.asset ?? 'n/a'}`,
-        `When: ${snapshot.sentAt}`,
-        `Summary: ${snapshot.summary}`,
-        `Cooldown until: ${snapshot.cooldownUntil ?? 'n/a'}`,
+        `When: ${formatCompactTimestamp(snapshot.sentAt)}`,
+        `Summary: ${truncateText(snapshot.summary, 120)}`,
+        `Cooldown until: ${snapshot.cooldownUntil ? formatCompactTimestamp(snapshot.cooldownUntil) : 'n/a'}`,
       ].join('\n'),
+      buildOnboardingKeyboard(),
+    ),
+  ];
+}
+
+async function handleLastDecision(
+  context: TelegramCommandContext,
+  deps: TelegramRouterDependencies,
+): Promise<TelegramOutgoingAction[]> {
+  const snapshot = await deps.inspectionProvider?.getLastDecisionSnapshot(context.userId);
+  return [
+    send(
+      context.chatId,
+      renderLastDecisionSnapshot(snapshot),
+      buildOnboardingKeyboard(),
+    ),
+  ];
+}
+
+async function handleHourlyHealth(
+  context: TelegramCommandContext,
+  deps: TelegramRouterDependencies,
+): Promise<TelegramOutgoingAction[]> {
+  const snapshot = await deps.inspectionProvider?.getHourlyHealthSnapshot(context.userId);
+  return [
+    send(
+      context.chatId,
+      renderHourlyHealthSnapshot(snapshot),
+      buildOnboardingKeyboard(),
     ),
   ];
 }
@@ -442,6 +491,45 @@ function formatOnboardingSnapshot(snapshot: TelegramOnboardingSnapshot): string 
   ].join('\n');
 }
 
+function renderLastDecisionSnapshot(
+  snapshot: TelegramLastDecisionSnapshot | null | undefined,
+): string {
+  if (!snapshot || snapshot.lines.length === 0) {
+    return 'No decision record is available yet.';
+  }
+
+  return [
+    'Last decision:',
+    `Tracked assets: ${formatTrackedAssets(snapshot.trackedAssets)}`,
+    ...snapshot.lines.map((line) => formatDecisionLine(line)),
+    'Operational only. No trade was executed.',
+  ].join('\n');
+}
+
+function renderHourlyHealthSnapshot(
+  snapshot: TelegramHourlyHealthSnapshot | null | undefined,
+): string {
+  if (!snapshot) {
+    return 'No hourly health summary is available yet.';
+  }
+
+  const latestNotification = snapshot.latestNotification
+    ? `${snapshot.latestNotification.deliveryStatus}${snapshot.latestNotification.reasonKey ? ` | ${snapshot.latestNotification.reasonKey}` : ''}${snapshot.latestNotification.suppressedBy ? ` | ${snapshot.latestNotification.suppressedBy}` : ''}${snapshot.latestNotification.sentAt ? ` | ${formatCompactTimestamp(snapshot.latestNotification.sentAt)}` : ''}`
+    : 'none';
+
+  return [
+    'Hourly health:',
+    `Tracked assets: ${formatTrackedAssets(snapshot.trackedAssets)}`,
+    `Readiness: ${snapshot.readiness.isReady ? 'ready' : 'blocked'} | cash: ${snapshot.readiness.hasCashRecord ? 'yes' : 'no'} | positions: ${formatTrackedAssets(snapshot.readiness.readyPositionAssets)}`,
+    `Missing: ${formatNextSteps(snapshot.readiness.missingItems)}`,
+    `Last run: ${snapshot.lastRunAt ? formatCompactTimestamp(snapshot.lastRunAt) : 'none'} | status: ${snapshot.lastDecisionStatus ?? 'none'}`,
+    `Market data: ${snapshot.marketDataStatus ?? 'none'} | failures: ${snapshot.recentMarketFailureCount} | latest issue: ${snapshot.latestMarketFailureMessage ? truncateText(snapshot.latestMarketFailureMessage, 100) : 'none'}`,
+    `Suppression: cooldown ${snapshot.recentCooldownSkipCount} | sleep ${snapshot.recentSleepSuppressionCount} | setup ${snapshot.recentSetupBlockedCount}`,
+    `Latest alert: ${latestNotification}`,
+    'Operational only. No trade was executed.',
+  ].join('\n');
+}
+
 function formatTrackedAssets(assets: Array<"BTC" | "ETH">): string {
   if (assets.length === 0) {
     return 'not selected';
@@ -462,6 +550,32 @@ function formatNumber(value: number): string {
   return new Intl.NumberFormat('en-US', {
     maximumFractionDigits: 8,
   }).format(value);
+}
+
+function formatDecisionLine(line: TelegramLastDecisionSnapshot['lines'][number]): string {
+  return [
+    `${line.asset}: ${line.status}`,
+    `${line.alertOutcome}${line.suppressedBy ? ` (${line.suppressedBy})` : ''}`,
+    formatCompactTimestamp(line.createdAt),
+    truncateText(line.summary, 90),
+  ].join(' | ');
+}
+
+function formatCompactTimestamp(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toISOString().replace('.000Z', 'Z');
+}
+
+function truncateText(value: string, limit: number): string {
+  if (value.length <= limit) {
+    return value;
+  }
+
+  return `${value.slice(0, Math.max(0, limit - 1)).trimEnd()}…`;
 }
 
 export interface TelegramActionNeededAlertInput {

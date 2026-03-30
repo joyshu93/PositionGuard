@@ -8,8 +8,10 @@ import { handleTelegramWebhook } from "./telegram.js";
 import {
   getUserByTelegramUserId,
   ensureTelegramUser,
+  getLatestDecisionRecordForUser,
   getTelegramStatusSnapshot,
   getUserStateBundleByUserId,
+  listRecentDecisionRecordsForUser,
   listRecentNotificationEventSummaries,
   setTrackedAssetsByTelegramUserId,
   setCashByTelegramUserId,
@@ -19,6 +21,10 @@ import {
 import { assessReadiness } from "./readiness.js";
 import { renderStatusMessage } from "./status.js";
 import type { TelegramActionNeededReason } from "./telegram.js";
+import {
+  buildHourlyHealthView,
+  buildLastDecisionView,
+} from "./operator-visibility.js";
 
 const jsonHeaders = {
   "content-type": "application/json; charset=utf-8",
@@ -137,7 +143,8 @@ async function handleFetch(
             };
           },
           async setTrackedAssets(telegramUserId, trackedAssets) {
-            const preference = trackedAssets[0] ?? "BTC,ETH";
+            const preference =
+              trackedAssets.length === 2 ? "BTC,ETH" : trackedAssets[0] ?? "BTC,ETH";
             await setTrackedAssetsByTelegramUserId(
               env.DB,
               String(telegramUserId),
@@ -161,6 +168,89 @@ async function handleFetch(
               trackedPositionAssets: readiness.readyPositionAssets,
               isReady: readiness.isReady,
               missingNextSteps: readiness.missingItems,
+            };
+          },
+        },
+        inspectionProvider: {
+          async getLastDecisionSnapshot(telegramUserId) {
+            const user = await getUserByTelegramUserId(env.DB, String(telegramUserId));
+            if (!user) {
+              return null;
+            }
+
+            const userState = await getUserStateBundleByUserId(env.DB, user.id);
+            if (!userState) {
+              return null;
+            }
+
+            const readiness = assessReadiness(userState);
+            const latestDecision = await getLatestDecisionRecordForUser(env.DB, user.id);
+            const view = buildLastDecisionView(latestDecision);
+
+            return {
+              trackedAssets: readiness.trackedAssets,
+              lines: view
+                ? [
+                    {
+                      asset: view.asset,
+                      status: view.status,
+                      summary: view.summary,
+                      createdAt: view.generatedAt,
+                      alertOutcome: view.alertOutcome,
+                      suppressedBy: view.suppressionReason,
+                    },
+                  ]
+                : [],
+            };
+          },
+          async getHourlyHealthSnapshot(telegramUserId) {
+            const user = await getUserByTelegramUserId(env.DB, String(telegramUserId));
+            if (!user) {
+              return null;
+            }
+
+            const userState = await getUserStateBundleByUserId(env.DB, user.id);
+            if (!userState) {
+              return null;
+            }
+
+            const readiness = assessReadiness(userState);
+            const [recentDecisions, recentNotifications] = await Promise.all([
+              listRecentDecisionRecordsForUser(env.DB, user.id, 8),
+              listRecentNotificationEventSummaries(env.DB, user.id, 8),
+            ]);
+            const view = buildHourlyHealthView({
+              decisions: recentDecisions,
+              notifications: recentNotifications,
+            });
+            const latestNotification = recentNotifications.find(
+              (event) => event.eventType === "ACTION_NEEDED",
+            );
+
+            return {
+              trackedAssets: readiness.trackedAssets,
+              readiness: {
+                isReady: readiness.isReady,
+                missingItems: readiness.missingItems,
+                hasCashRecord: readiness.hasCashRecord,
+                readyPositionAssets: readiness.readyPositionAssets,
+              },
+              lastRunAt: view.latestDecisionAt,
+              lastDecisionStatus: view.latestDecisionStatus,
+              marketDataStatus: inferMarketDataStatus(recentDecisions[0]?.context),
+              recentMarketFailureCount: view.recentMarketFailureCount,
+              recentCooldownSkipCount: view.recentCooldownSkipCount,
+              recentSleepSuppressionCount: view.recentSleepSuppressionCount,
+              recentSetupBlockedCount: view.recentSetupBlockedCount,
+              latestMarketFailureMessage: view.latestMarketFailureMessage,
+              latestNotification: latestNotification
+                ? {
+                    deliveryStatus: latestNotification.deliveryStatus,
+                    reasonKey: latestNotification.reasonKey,
+                    suppressedBy: latestNotification.suppressedBy,
+                    sentAt: latestNotification.sentAt,
+                  }
+                : null,
             };
           },
         },
@@ -272,5 +362,41 @@ function inferTelegramAlertReason(
   }
 
   return "SETUP_INCOMPLETE";
+}
+
+function inferMarketDataStatus(
+  context: unknown,
+): "ok" | "no_data" | "fetch_failure" | "normalization_failure" | null {
+  if (!context || typeof context !== "object") {
+    return null;
+  }
+
+  const diagnostics = (context as { diagnostics?: unknown }).diagnostics;
+  if (!diagnostics || typeof diagnostics !== "object") {
+    return null;
+  }
+
+  const marketData = (diagnostics as { marketData?: unknown }).marketData;
+  if (!marketData || typeof marketData !== "object") {
+    return null;
+  }
+
+  const ok = (marketData as { ok?: unknown }).ok;
+  if (ok === true) {
+    return "ok";
+  }
+
+  const reason = (marketData as { reason?: unknown }).reason;
+  if (reason === "NO_DATA") {
+    return "no_data";
+  }
+  if (reason === "FETCH_FAILURE") {
+    return "fetch_failure";
+  }
+  if (reason === "NORMALIZATION_FAILURE") {
+    return "normalization_failure";
+  }
+
+  return null;
 }
 

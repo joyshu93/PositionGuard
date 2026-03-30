@@ -15,6 +15,8 @@ import {
   buildActionNeededAlertPlan,
   isActionNeededStatus,
 } from "./runtime-alerts.js";
+import { buildHourlyDiagnostics } from "./hourly-diagnostics.js";
+export { buildHourlyDiagnostics } from "./hourly-diagnostics.js";
 import { getMarketForAsset, getMarketSnapshotResult } from "./upbit.js";
 import {
   getLatestDecisionLogSummary,
@@ -127,20 +129,15 @@ async function processAssetCycle(
     actionable: decision.actionable,
     contextJson: JSON.stringify({
       context,
-      diagnostics: {
-        marketData: marketResult.ok
-          ? { ok: true }
-          : {
-              ok: false,
-              reason: marketResult.reason,
-              message: marketResult.message,
-              consecutiveFailures: consecutiveMarketFailures,
-            },
-        baseDecisionStatus: baseDecision.status,
+      diagnostics: buildHourlyDiagnostics({
+        context,
+        baseDecision,
+        finalDecision: decision,
+        marketResult,
+        consecutiveMarketFailures,
         notificationEligible,
         notificationState,
-        sleepModeEnabled: userState.user.sleepModeEnabled,
-      },
+      }),
     }),
     notificationSent: notificationState.sent,
   });
@@ -165,12 +162,14 @@ async function evaluateNotificationState(params: {
   sent: boolean;
   reasonKey: string | null;
   suppressedBy: string | null;
+  cooldownUntil: string | null;
 }> {
   if (!isActionNeededStatus(String(params.decision.status))) {
     return {
       sent: false,
       reasonKey: null,
       suppressedBy: null,
+      cooldownUntil: null,
     };
   }
 
@@ -230,6 +229,7 @@ async function evaluateNotificationState(params: {
       sent: false,
       reasonKey: plan.reasonKey,
       suppressedBy: plan.suppressionReason,
+      cooldownUntil: plan.cooldownUntil,
     };
   }
 
@@ -238,6 +238,7 @@ async function evaluateNotificationState(params: {
       sent: false,
       reasonKey: plan.reasonKey,
       suppressedBy: "missing_chat_id",
+      cooldownUntil: plan.cooldownUntil,
     };
   }
 
@@ -271,6 +272,7 @@ async function evaluateNotificationState(params: {
     sent: true,
     reasonKey: plan.reasonKey,
     suppressedBy: null,
+    cooldownUntil: plan.cooldownUntil,
   };
 }
 

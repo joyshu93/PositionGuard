@@ -20,7 +20,9 @@ import type {
 import type { D1DatabaseLike } from "./db.js";
 import {
   createDecisionLog,
+  getLatestDecisionLogForUser,
   getLatestDecisionLogForUserAsset,
+  listDecisionLogsForUser,
   listRecentDecisionLogsForUserAsset,
 } from "./decision-logs.js";
 import {
@@ -221,6 +223,21 @@ export async function getLatestDecisionLogSummary(
   asset: SupportedAsset,
 ): Promise<DecisionLogLookup | null> {
   return getLatestDecisionLogForUserAsset(db, userId, asset);
+}
+
+export async function getLatestDecisionRecordForUser(
+  db: D1DatabaseLike,
+  userId: number,
+) {
+  return getLatestDecisionLogForUser(db, userId);
+}
+
+export async function listRecentDecisionRecordsForUser(
+  db: D1DatabaseLike,
+  userId: number,
+  limit = 10,
+) {
+  return listDecisionLogsForUser(db, userId, limit);
 }
 
 export async function listRecentDecisionLogSummaries(

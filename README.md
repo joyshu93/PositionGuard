@@ -128,6 +128,8 @@ Current debug surface:
 
 - `/lastalert` shows the most recent recorded alert snapshot for the current user
 - `/status` includes tracked assets, sleep mode, setup readiness, missing next steps, and recent alert summaries when available
+- `/lastdecision` shows the most recent hourly decision for the user
+- `/hourlyhealth` shows a compact recent hourly health summary for the user
 
 This is still not a final decision engine, and it is not an execution path.
 
@@ -148,6 +150,8 @@ Planned bot commands:
 - `/track`
 - `/setcash`
 - `/setposition`
+- `/lastdecision`
+- `/hourlyhealth`
 - `/lastalert`
 - `/sleep on`
 - `/sleep off`
@@ -162,6 +166,8 @@ Current behavior:
 - `/status` marks readiness complete only when cash plus the selected tracked asset records are present
 - `/setcash <amount>` records available cash only
 - `/setposition <BTC|ETH> <quantity> <average-entry-price>` records BTC/ETH spot state only
+- `/lastdecision` inspects the latest hourly decision status, summary, time, and alert outcome
+- `/hourlyhealth` inspects recent hourly processing health such as market-data failures, cooldown skips, sleep suppressions, and setup blocks
 - `/sleep on` and `/sleep off` toggle alert quiet mode
 - `/lastalert` inspects the most recent recorded alert snapshot
 - inline callback buttons can refresh status or toggle sleep mode
@@ -197,7 +203,7 @@ This remains a manual record system. It does not sync balances or execute orders
 1. Add optional richer onboarding shortcuts beyond the current lightweight inline guidance.
 2. Refine cooldown windows and notification inspection now that basic `ACTION_NEEDED` delivery exists.
 3. Add richer public market structure summaries for `1h`, `4h`, and `1d`.
-4. Expose recent decision-log inspection for operational debugging.
+4. Expose deeper decision-log filtering if operator visibility needs to grow later.
 5. Replace the stub decision engine with a real scenario-based engine later.
 
 ## Notes On Market Data
