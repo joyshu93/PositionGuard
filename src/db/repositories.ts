@@ -31,6 +31,13 @@ import {
   listRecentNotificationEventsForUser,
 } from "./notification-events.js";
 import {
+  getHourlyHealthInspection,
+  getLatestDecisionLogInspection,
+  getLatestNotificationEventInspection,
+  listRecentDecisionLogInspections,
+  listRecentNotificationEventInspections,
+} from "./operator-visibility.js";
+import {
   loadUserStateSnapshotByTelegramId,
   loadUserStateSnapshotByUserId,
   saveUserReportedAccountState,
@@ -271,6 +278,44 @@ export async function listRecentNotificationEventSummaries(
   limit = 25,
 ) {
   return listRecentNotificationEventsForUser(db, userId, limit);
+}
+
+export async function getLatestDecisionLogInspectionForUser(
+  db: D1DatabaseLike,
+  userId: number,
+) {
+  return getLatestDecisionLogInspection(db, userId);
+}
+
+export async function listRecentDecisionLogInspectionsForUser(
+  db: D1DatabaseLike,
+  userId: number,
+  limit = 10,
+) {
+  return listRecentDecisionLogInspections(db, userId, limit);
+}
+
+export async function getLatestNotificationEventInspectionForUser(
+  db: D1DatabaseLike,
+  userId: number,
+) {
+  return getLatestNotificationEventInspection(db, userId);
+}
+
+export async function listRecentNotificationEventInspectionsForUser(
+  db: D1DatabaseLike,
+  userId: number,
+  limit = 10,
+) {
+  return listRecentNotificationEventInspections(db, userId, limit);
+}
+
+export async function getHourlyHealthInspectionForUser(
+  db: D1DatabaseLike,
+  userId: number,
+  limit = 10,
+) {
+  return getHourlyHealthInspection(db, userId, limit);
 }
 
 export async function getUserByTelegramUserId(

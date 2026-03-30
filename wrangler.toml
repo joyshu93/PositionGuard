@@ -12,7 +12,7 @@ TELEGRAM_WEBHOOK_PATH = "/telegram/webhook"
 [[d1_databases]]
 binding = "DB"
 database_name = "position-guard"
-database_id = "replace-with-your-d1-database-id"
+database_id = "f675cea3-0dc7-46db-a0e7-b20c2c245f5c"
 migrations_dir = "migrations"
 
 [triggers]

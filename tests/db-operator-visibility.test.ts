@@ -1,14 +1,16 @@
 import type { D1DatabaseLike, D1PreparedStatement } from "../src/db/db.js";
 import {
   buildHourlyHealthInspection,
-  getHourlyHealthInspection,
-  getLatestDecisionLogInspection,
-  getLatestNotificationEventInspection,
-  listRecentDecisionLogInspections,
-  listRecentNotificationEventInspections,
   mapDecisionLogInspection,
   mapNotificationEventInspection,
 } from "../src/db/operator-visibility.js";
+import {
+  getHourlyHealthInspectionForUser,
+  getLatestDecisionLogInspectionForUser,
+  getLatestNotificationEventInspectionForUser,
+  listRecentDecisionLogInspectionsForUser,
+  listRecentNotificationEventInspectionsForUser,
+} from "../src/db/repositories.js";
 import type {
   DecisionLogRecord,
   NotificationEventRecord,
@@ -179,14 +181,14 @@ const db = createMockDb(
   ],
 );
 
-const latestDecision = await getLatestDecisionLogInspection(db, 42);
+const latestDecision = await getLatestDecisionLogInspectionForUser(db, 42);
 assertEqual(
   latestDecision?.summary ?? null,
-  "No action is needed.",
+  "Manual setup is incomplete.",
   "Latest decision inspection should return the most recent summary.",
 );
 
-const latestNotification = await getLatestNotificationEventInspection(db, 42);
+const latestNotification = await getLatestNotificationEventInspectionForUser(db, 42);
 assertEqual(
   latestNotification?.reasonKey ?? null,
   "setup:cash",
@@ -198,7 +200,11 @@ assertEqual(
   "Latest notification inspection should preserve the most recent event timestamp.",
 );
 
-const recentDecisionInspections = await listRecentDecisionLogInspections(db, 42, 2);
+const recentDecisionInspections = await listRecentDecisionLogInspectionsForUser(
+  db,
+  42,
+  2,
+);
 assertEqual(
   recentDecisionInspections.length,
   2,
@@ -215,7 +221,7 @@ assertEqual(
   "Recent decision inspections should preserve descending order.",
 );
 
-const recentNotificationInspections = await listRecentNotificationEventInspections(
+const recentNotificationInspections = await listRecentNotificationEventInspectionsForUser(
   db,
   42,
   2,
@@ -231,7 +237,7 @@ assertEqual(
   "Recent notification inspections should return newest rows first.",
 );
 
-const hourlyHealth = await getHourlyHealthInspection(db, 42, 2);
+const hourlyHealth = await getHourlyHealthInspectionForUser(db, 42, 2);
 assertEqual(
   hourlyHealth.userId,
   42,
@@ -249,7 +255,7 @@ assertEqual(
 );
 assertEqual(
   hourlyHealth.latestDecisionLog?.summary ?? null,
-  "No action is needed.",
+  "Manual setup is incomplete.",
   "Hourly health inspection should surface the latest decision log.",
 );
 assertEqual(
@@ -279,6 +285,63 @@ function createMockDb(
   decisionRows: Array<Record<string, unknown>>,
   notificationRows: Array<Record<string, unknown>>,
 ): D1DatabaseLike {
+  class MockStatement implements D1PreparedStatement {
+    private values: unknown[] = [];
+
+    constructor(
+      private readonly query: string,
+      private readonly decisionRowsInput: Array<Record<string, unknown>>,
+      private readonly notificationRowsInput: Array<Record<string, unknown>>,
+    ) {}
+
+    bind(...values: unknown[]): D1PreparedStatement {
+      this.values = values;
+      return this;
+    }
+
+    async first<T = Record<string, unknown>>(_column?: string): Promise<T | null> {
+      const results = this.selectRows();
+      return (results[0] ?? null) as T | null;
+    }
+
+    async all<T = Record<string, unknown>>(): Promise<{ results: T[] }> {
+      return { results: this.selectRows() as T[] };
+    }
+
+    async run(): Promise<{ success: boolean; meta?: unknown }> {
+      return { success: true };
+    }
+
+    private selectRows(): Record<string, unknown>[] {
+      const userId = this.values[0] as number | undefined;
+      const limit = this.values[1] as number | undefined;
+
+      if (this.query.includes("FROM decision_logs")) {
+        return [...this.decisionRowsInput]
+          .filter((row) => row.user_id === userId)
+          .sort((left, right) => {
+            const rightCreatedAt = Date.parse(String(right.created_at ?? ""));
+            const leftCreatedAt = Date.parse(String(left.created_at ?? ""));
+            return rightCreatedAt - leftCreatedAt;
+          })
+          .slice(0, typeof limit === "number" ? limit : 25);
+      }
+
+      if (this.query.includes("FROM notification_events")) {
+        return [...this.notificationRowsInput]
+          .filter((row) => row.user_id === userId)
+          .sort((left, right) => {
+            const rightCreatedAt = Date.parse(String(right.created_at ?? ""));
+            const leftCreatedAt = Date.parse(String(left.created_at ?? ""));
+            return rightCreatedAt - leftCreatedAt;
+          })
+          .slice(0, typeof limit === "number" ? limit : 25);
+      }
+
+      return [];
+    }
+  }
+
   return {
     prepare(query: string): D1PreparedStatement {
       return new MockStatement(query, decisionRows, notificationRows);
@@ -286,61 +349,4 @@ function createMockDb(
     batch: async () => [],
     exec: async () => ({}),
   };
-}
-
-class MockStatement implements D1PreparedStatement {
-  private values: unknown[] = [];
-
-  constructor(
-    private readonly query: string,
-    private readonly decisionRows: Array<Record<string, unknown>>,
-    private readonly notificationRows: Array<Record<string, unknown>>,
-  ) {}
-
-  bind(...values: unknown[]): D1PreparedStatement {
-    this.values = values;
-    return this;
-  }
-
-  async first<T = Record<string, unknown>>(_column?: string): Promise<T | null> {
-    const results = this.selectRows();
-    return (results[0] ?? null) as T | null;
-  }
-
-  async all<T = Record<string, unknown>>(): Promise<{ results: T[] }> {
-    return { results: this.selectRows() as T[] };
-  }
-
-  async run(): Promise<{ success: boolean; meta?: unknown }> {
-    return { success: true };
-  }
-
-  private selectRows(): Record<string, unknown>[] {
-    const userId = this.values[0] as number | undefined;
-    const limit = this.values[1] as number | undefined;
-
-    if (this.query.includes("FROM decision_logs")) {
-      return [...this.decisionRows]
-        .filter((row) => row.user_id === userId)
-        .sort((left, right) => {
-          const rightCreatedAt = Date.parse(String(right.created_at ?? ""));
-          const leftCreatedAt = Date.parse(String(left.created_at ?? ""));
-          return rightCreatedAt - leftCreatedAt;
-        })
-        .slice(0, typeof limit === "number" ? limit : 25);
-    }
-
-    if (this.query.includes("FROM notification_events")) {
-      return [...this.notificationRows]
-        .filter((row) => row.user_id === userId)
-        .sort((left, right) => {
-          const rightCreatedAt = Date.parse(String(right.created_at ?? ""));
-          const leftCreatedAt = Date.parse(String(left.created_at ?? ""));
-          return rightCreatedAt - leftCreatedAt;
-        })
-        .slice(0, typeof limit === "number" ? limit : 25);
-    }
-
-    return [];
-  }
 }

@@ -575,7 +575,7 @@ function truncateText(value: string, limit: number): string {
     return value;
   }
 
-  return `${value.slice(0, Math.max(0, limit - 1)).trimEnd()}â€¦`;
+  return `${value.slice(0, Math.max(0, limit - 1)).trimEnd()}¡¦`;
 }
 
 export interface TelegramActionNeededAlertInput {
@@ -632,3 +632,4 @@ function answer(callbackQueryId: string, text?: string): TelegramOutgoingAction 
     ? { kind: 'answerCallbackQuery', callbackQueryId, text }
     : { kind: 'answerCallbackQuery', callbackQueryId };
 }
+

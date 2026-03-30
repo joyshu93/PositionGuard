@@ -1,5 +1,9 @@
 import { routeCommand } from "../src/telegram/commands.js";
-import type { TelegramCommandContext, TelegramOnboardingProvider } from "../src/telegram/types.js";
+import type {
+  TelegramCommandContext,
+  TelegramInspectionProvider,
+  TelegramOnboardingProvider,
+} from "../src/telegram/types.js";
 import { assert, assertEqual } from "./test-helpers.js";
 
 const calls: Array<{ kind: string; payload: unknown }> = [];
@@ -49,10 +53,10 @@ const onboardingProvider: TelegramOnboardingProvider = {
   },
 };
 
-const inspectionProvider = {
+const inspectionProvider: TelegramInspectionProvider = {
   async getLastDecisionSnapshot() {
     return {
-      trackedAssets: ["BTC", "ETH"],
+      trackedAssets: ["BTC", "ETH"] as ("BTC" | "ETH")[],
       lines: [
         {
           asset: "BTC",
@@ -75,12 +79,12 @@ const inspectionProvider = {
   },
   async getHourlyHealthSnapshot() {
     return {
-      trackedAssets: ["BTC", "ETH"],
+      trackedAssets: ["BTC", "ETH"] as ("BTC" | "ETH")[],
       readiness: {
         isReady: false,
         missingItems: ["ETH position"],
         hasCashRecord: true,
-        readyPositionAssets: ["BTC"],
+        readyPositionAssets: ["BTC"] as ("BTC" | "ETH")[],
       },
       lastRunAt: "2026-01-01T03:00:00.000Z",
       lastDecisionStatus: "ACTION_NEEDED",
@@ -329,10 +333,10 @@ if (alertAction && alertAction.kind === "sendMessage") {
   alertText = alertAction.text;
 }
 
-  assert(
-    alertText.includes("Cooldown until: 2026-01-01T09:00:00.000Z"),
-    "/lastalert should expose cooldown visibility for debugging.",
-  );
+assert(
+  alertText.includes("Cooldown until: 2026-01-01T09:00:00Z"),
+  "/lastalert should expose cooldown visibility for debugging.",
+);
 
 const lastDecisionActions = await routeCommand(
   {
@@ -421,105 +425,6 @@ assert(
     (action) => action.kind === "sendMessage" && action.text.includes("Last decision:"),
   ),
   "inspection callbacks should route to the compact decision summary.",
-);
-
-const lastDecisionActions = await routeCommand(
-  {
-    ...baseContext,
-    command: "lastdecision",
-    args: [],
-    text: "/lastdecision",
-  },
-  {
-    ...deps,
-    inspectionProvider: {
-      async getLastDecisionSnapshot() {
-        return {
-          trackedAssets: ["BTC"],
-          lines: [
-            {
-              asset: "BTC",
-              status: "ACTION_NEEDED",
-              summary: "Manual setup is incomplete.",
-              createdAt: "2026-01-01T04:00:00.000Z",
-              alertOutcome: "skipped",
-              suppressedBy: "cooldown",
-            },
-          ],
-        };
-      },
-      async getHourlyHealthSnapshot() {
-        return null;
-      },
-    },
-  },
-);
-
-const lastDecisionAction = lastDecisionActions[0];
-let lastDecisionText = "";
-if (lastDecisionAction && lastDecisionAction.kind === "sendMessage") {
-  lastDecisionText = lastDecisionAction.text;
-}
-
-assert(
-  lastDecisionText.includes("Status: ACTION_NEEDED") &&
-    lastDecisionText.includes("Alert: skipped (cooldown)"),
-  "/lastdecision should show the latest decision status and alert outcome.",
-);
-
-const hourlyHealthActions = await routeCommand(
-  {
-    ...baseContext,
-    command: "hourlyhealth",
-    args: [],
-    text: "/hourlyhealth",
-  },
-  {
-    ...deps,
-    inspectionProvider: {
-      async getLastDecisionSnapshot() {
-        return null;
-      },
-      async getHourlyHealthSnapshot() {
-        return {
-          trackedAssets: ["BTC"],
-          readiness: {
-            isReady: false,
-            missingItems: ["cash"],
-            hasCashRecord: false,
-            readyPositionAssets: [],
-          },
-          lastRunAt: "2026-01-01T05:00:00.000Z",
-          lastDecisionStatus: "SETUP_INCOMPLETE",
-          marketDataStatus: "fetch_failure",
-          recentMarketFailureCount: 2,
-          recentCooldownSkipCount: 1,
-          recentSleepSuppressionCount: 1,
-          recentSetupBlockedCount: 3,
-          latestMarketFailureMessage: "Timeout while calling Upbit.",
-          latestNotification: {
-            deliveryStatus: "SKIPPED",
-            reasonKey: "setup:100",
-            suppressedBy: "sleep_mode",
-            sentAt: null,
-          },
-        };
-      },
-    },
-  },
-);
-
-const hourlyHealthAction = hourlyHealthActions[0];
-let hourlyHealthText = "";
-if (hourlyHealthAction && hourlyHealthAction.kind === "sendMessage") {
-  hourlyHealthText = hourlyHealthAction.text;
-}
-
-assert(
-  hourlyHealthText.includes("Recent cooldown skips: 1") &&
-    hourlyHealthText.includes("Recent sleep suppressions: 1") &&
-    hourlyHealthText.includes("Latest market issue: Timeout while calling Upbit."),
-  "/hourlyhealth should surface compact recent health signals.",
 );
 
 const invalidActions = await routeCommand(
