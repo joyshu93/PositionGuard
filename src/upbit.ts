@@ -87,6 +87,23 @@ export interface UpbitClientOptions {
   baseUrl?: string;
 }
 
+export type MarketSnapshotFailureReason =
+  | "NO_DATA"
+  | "FETCH_FAILURE"
+  | "NORMALIZATION_FAILURE";
+
+export type MarketSnapshotResult =
+  | {
+      ok: true;
+      snapshot: import("./domain/types").MarketSnapshot;
+    }
+  | {
+      ok: false;
+      snapshot: null;
+      reason: MarketSnapshotFailureReason;
+      message: string;
+    };
+
 export interface CandleQueryOptions {
   count?: number;
   to?: string;
@@ -283,6 +300,14 @@ export async function getMarketSnapshot(
   baseUrl: string | undefined,
   market: SupportedMarket,
 ): Promise<import("./domain/types").MarketSnapshot | null> {
+  const result = await getMarketSnapshotResult(baseUrl, market);
+  return result.ok ? result.snapshot : null;
+}
+
+export async function getMarketSnapshotResult(
+  baseUrl: string | undefined,
+  market: SupportedMarket,
+): Promise<MarketSnapshotResult> {
   const client = new UpbitClient(baseUrl ? { baseUrl } : {});
 
   try {
@@ -293,32 +318,59 @@ export async function getMarketSnapshot(
       client.getCandleSeries(market, "1d", { count: 30 }),
     ]);
 
+    if (
+      hourly.candles.length === 0 ||
+      fourHour.candles.length === 0 ||
+      daily.candles.length === 0
+    ) {
+      return {
+        ok: false,
+        snapshot: null,
+        reason: "NO_DATA",
+        message: `Upbit returned empty candle data for ${market}.`,
+      };
+    }
+
     return {
-      market,
-      asset: market === "KRW-BTC" ? "BTC" : "ETH",
-      ticker: {
+      ok: true,
+      snapshot: {
         market,
-        tradePrice: ticker.tradePrice,
-        changeRate: ticker.changeRate ?? 0,
-        fetchedAt: new Date().toISOString(),
-      },
-      timeframes: {
-        "1h": {
-          timeframe: "1h",
-          candles: hourly.candles.map(mapNormalizedCandle),
+        asset: market === "KRW-BTC" ? "BTC" : "ETH",
+        ticker: {
+          market,
+          tradePrice: ticker.tradePrice,
+          changeRate: ticker.changeRate ?? 0,
+          fetchedAt: new Date().toISOString(),
         },
-        "4h": {
-          timeframe: "4h",
-          candles: fourHour.candles.map(mapNormalizedCandle),
-        },
-        "1d": {
-          timeframe: "1d",
-          candles: daily.candles.map(mapNormalizedCandle),
+        timeframes: {
+          "1h": {
+            timeframe: "1h",
+            candles: hourly.candles.map(mapNormalizedCandle),
+          },
+          "4h": {
+            timeframe: "4h",
+            candles: fourHour.candles.map(mapNormalizedCandle),
+          },
+          "1d": {
+            timeframe: "1d",
+            candles: daily.candles.map(mapNormalizedCandle),
+          },
         },
       },
     };
-  } catch {
-    return null;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown Upbit error.";
+    const reason = message.includes("Unsupported") || message.includes("Unexpected")
+      ? "NORMALIZATION_FAILURE"
+      : "FETCH_FAILURE";
+    console.warn(`[upbit] ${market} snapshot failed (${reason}): ${message}`);
+
+    return {
+      ok: false,
+      snapshot: null,
+      reason,
+      message,
+    };
   }
 }
 

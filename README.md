@@ -128,6 +128,7 @@ Planned bot commands:
 - `/help`
 - `/status`
 - `/setcash`
+- `/setposition`
 - `/sleep on`
 - `/sleep off`
 
@@ -137,6 +138,7 @@ Current behavior:
 - `/help` shows supported commands
 - `/status` reads stored user-reported state
 - `/setcash <amount>` records available cash only
+- `/setposition <BTC|ETH> <quantity> <average-entry-price>` records BTC/ETH spot state only
 - `/sleep on` and `/sleep off` toggle alert quiet mode
 
 Any future buy/sell-related command must be record-only and must not execute trades.
@@ -150,14 +152,14 @@ Any future buy/sell-related command must be record-only and must not execute tra
 - No final decision engine yet
 - No LLM-based judgment in this stage
 - No support for markets beyond BTC and ETH spot
-- No Telegram command yet for entering BTC/ETH quantity and average entry price, although the DB schema is ready for it
+- No notification sending logic yet, even though sleep mode and notification safety scaffolding exist
 
 ## Roadmap
 
-1. Add Telegram commands for manually recording BTC and ETH position quantity plus average entry price.
-2. Expand `/status` with cleaner onboarding guidance and asset-specific setup completeness.
-3. Add notification throttling and duplicate-suppression rules to `notification_events`.
-4. Add richer public market structure summaries for `1h`, `4h`, and `1d`.
+1. Add optional inline-assisted input helpers for cash and position recording.
+2. Persist last-notified timestamps or cooldown metadata in `notification_events`.
+3. Add richer public market structure summaries for `1h`, `4h`, and `1d`.
+4. Expose recent decision-log inspection for operational debugging.
 5. Replace the stub decision engine with a real scenario-based engine later.
 
 ## Notes On Market Data

@@ -4,7 +4,7 @@ import type {
   PositionState,
   SupportedAsset,
   UserStateBundle,
-} from "../domain/types";
+} from "../domain/types.js";
 
 export interface BuildDecisionContextParams {
   userState: UserStateBundle;

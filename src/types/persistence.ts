@@ -110,3 +110,11 @@ export interface UserStateSnapshot {
   accountState: AccountStateRecord | null;
   positionStates: PositionStateRecord[];
 }
+
+export interface DecisionLogLookup {
+  userId: number;
+  asset: AssetSymbol;
+  decisionStatus: DecisionStatus;
+  summary: string;
+  createdAt: string;
+}

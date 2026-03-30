@@ -1,6 +1,6 @@
-import { boolToInt, intToBool, nowIso } from "./db";
-import type { D1DatabaseLike } from "./db";
-import type { UserProfileInput, UserRecord } from "../types/persistence";
+import { boolToInt, intToBool, nowIso } from "./db.js";
+import type { D1DatabaseLike } from "./db.js";
+import type { UserProfileInput, UserRecord } from "../types/persistence.js";
 
 type UserRow = {
   id: number;
@@ -109,6 +109,27 @@ export const setUserSleepMode = async (
        WHERE telegram_user_id = ?`,
     )
     .bind(boolToInt(sleepMode), nowIso(), telegramUserId)
+    .run();
+
+  const user = await getUserByTelegramId(db, telegramUserId);
+  if (!user) {
+    throw new Error("User not found");
+  }
+  return user;
+};
+
+export const setUserOnboardingComplete = async (
+  db: D1DatabaseLike,
+  telegramUserId: string,
+  onboardingComplete: boolean,
+): Promise<UserRecord> => {
+  await db
+    .prepare(
+      `UPDATE users
+       SET onboarding_complete = ?, updated_at = ?
+       WHERE telegram_user_id = ?`,
+    )
+    .bind(boolToInt(onboardingComplete), nowIso(), telegramUserId)
     .run();
 
   const user = await getUserByTelegramId(db, telegramUserId);

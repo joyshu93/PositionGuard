@@ -2,15 +2,18 @@ import {
   DEFAULT_HEALTH_PATH,
   DEFAULT_TELEGRAM_WEBHOOK_PATH,
   type Env,
-} from "./env";
-import { runHourlyCycle } from "./hourly";
-import { handleTelegramWebhook } from "./telegram";
+} from "./env.js";
+import { runHourlyCycle } from "./hourly.js";
+import { handleTelegramWebhook } from "./telegram.js";
 import {
   ensureTelegramUser,
   getTelegramStatusSnapshot,
+  getUserStateBundleByUserId,
   setCashByTelegramUserId,
+  setPositionByTelegramUserId,
   setSleepModeByTelegramUserId,
-} from "./db/repositories";
+} from "./db/repositories.js";
+import { renderStatusMessage } from "./status.js";
 
 const jsonHeaders = {
   "content-type": "application/json; charset=utf-8",
@@ -83,37 +86,22 @@ async function handleFetch(
           async upsertUserState(input) {
             await ensureTelegramUser(env.DB, {
               telegramUserId: String(input.telegramUserId),
-              telegramChatId: String(input.telegramUserId),
+              telegramChatId: String(input.telegramChatId),
+              username: input.username ?? null,
+              displayName: input.displayName ?? null,
             });
-
-            if (typeof input.cash === "number") {
-              await setCashByTelegramUserId(
-                env.DB,
-                String(input.telegramUserId),
-                input.cash,
-              );
-            }
-
-            if (typeof input.isSleeping === "boolean") {
-              await setSleepModeByTelegramUserId(
-                env.DB,
-                String(input.telegramUserId),
-                input.isSleeping,
-              );
-            }
           },
           async setCash(telegramUserId, cash) {
-            await ensureTelegramUser(env.DB, {
-              telegramUserId: String(telegramUserId),
-              telegramChatId: String(telegramUserId),
-            });
             await setCashByTelegramUserId(env.DB, String(telegramUserId), cash);
           },
-          async setSleepMode(telegramUserId, isSleeping) {
-            await ensureTelegramUser(env.DB, {
-              telegramUserId: String(telegramUserId),
-              telegramChatId: String(telegramUserId),
+          async setPosition(input) {
+            await setPositionByTelegramUserId(env.DB, String(input.telegramUserId), {
+              asset: input.asset,
+              quantity: input.quantity,
+              averageEntryPrice: input.averageEntryPrice,
             });
+          },
+          async setSleepMode(telegramUserId, isSleeping) {
             await setSleepModeByTelegramUserId(
               env.DB,
               String(telegramUserId),
@@ -123,45 +111,20 @@ async function handleFetch(
         },
         statusProvider: {
           async getStatus(telegramUserId) {
-            const snapshot = await getTelegramStatusSnapshot(
+            const statusSnapshot = await getTelegramStatusSnapshot(
               env.DB,
               String(telegramUserId),
             );
-
-            if (!snapshot) {
-              return [
-                "No stored setup yet.",
-                "Use /setcash <amount> to record available cash.",
-                "Position recording scaffolding exists in the database but is not yet exposed as a Telegram command.",
-              ].join("\n");
+            if (!statusSnapshot) {
+              return renderStatusMessage(null);
             }
 
-            const btc = snapshot.positions.BTC;
-            const eth = snapshot.positions.ETH;
+            const userState = await getUserStateBundleByUserId(
+              env.DB,
+              statusSnapshot.user.id,
+            );
 
-            return [
-              `Sleep mode: ${snapshot.user.sleepModeEnabled ? "on" : "off"}`,
-              `Available cash: ${
-                snapshot.accountState
-                  ? formatNumber(snapshot.accountState.availableCash)
-                  : "not set"
-              } KRW`,
-              `BTC spot: ${
-                btc
-                  ? `${formatNumber(btc.quantity)} @ avg ${formatNumber(
-                      btc.averageEntryPrice,
-                    )}`
-                  : "not set"
-              }`,
-              `ETH spot: ${
-                eth
-                  ? `${formatNumber(eth.quantity)} @ avg ${formatNumber(
-                      eth.averageEntryPrice,
-                    )}`
-                  : "not set"
-              }`,
-              "This bot records state only. It does not execute trades.",
-            ].join("\n");
+            return renderStatusMessage(userState);
           },
         },
       },
@@ -176,10 +139,4 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: jsonHeaders,
   });
-}
-
-function formatNumber(value: number): string {
-  return new Intl.NumberFormat("en-US", {
-    maximumFractionDigits: 8,
-  }).format(value);
 }

@@ -1,6 +1,6 @@
-import { nowIso } from "./db";
-import type { D1DatabaseLike } from "./db";
-import type { PositionStateInput, PositionStateRecord } from "../types/persistence";
+import { nowIso } from "./db.js";
+import type { D1DatabaseLike } from "./db.js";
+import type { PositionStateInput, PositionStateRecord } from "../types/persistence.js";
 
 type PositionStateRow = {
   id: number;

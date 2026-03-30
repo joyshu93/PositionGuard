@@ -4,9 +4,9 @@ import type {
   TelegramCommandContext,
   TelegramMessage,
   TelegramMessageEntity,
-  TelegramOutgoingAction,
+  TelegramUserProfile,
   TelegramUpdate,
-} from './types';
+} from './types.js';
 
 export interface TelegramParsedCommand {
   command: string;
@@ -63,6 +63,27 @@ export function parseCashAmount(text: string): number | null {
   return value;
 }
 
+export function parsePositionArgs(args: string[]): {
+  asset: string;
+  quantity: string;
+  averageEntryPrice: string;
+} | null {
+  if (args.length < 3) {
+    return null;
+  }
+
+  const [asset, quantity, averageEntryPrice] = args;
+  if (!asset || !quantity || !averageEntryPrice) {
+    return null;
+  }
+
+  return {
+    asset,
+    quantity,
+    averageEntryPrice,
+  };
+}
+
 export function parseSleepModeArg(args: string[]): boolean | null {
   const value = args[0]?.toLowerCase();
   if (value === 'on') {
@@ -108,6 +129,7 @@ export function commandContextFromMessage(update: TelegramUpdate, message: Teleg
     update,
     chatId: message.chat.id,
     userId: from.id,
+    profile: buildTelegramProfile(from, message.chat.id, message.chat),
     text,
     command: parsed.command,
     args: parsed.args,
@@ -125,6 +147,7 @@ export function callbackContextFromQuery(update: TelegramUpdate, callbackQuery: 
     update,
     chatId: message.chat.id,
     userId: from.id,
+    profile: buildTelegramProfile(from, message.chat.id, message.chat),
     text: callbackQuery.data ?? '',
     command: 'callback',
     args: [],
@@ -174,4 +197,45 @@ function isObject(value: unknown): value is Record<string, unknown> {
 
 function isTelegramUser(value: unknown): value is TelegramCallbackQuery['from'] {
   return isObject(value) && typeof value.id === 'number';
+}
+
+function buildTelegramProfile(
+  user: TelegramCallbackQuery["from"],
+  chatId: number,
+  chat: TelegramMessage["chat"],
+): TelegramUserProfile {
+  const profile: TelegramUserProfile = {
+    telegramUserId: user.id,
+    telegramChatId: chatId,
+  };
+
+  if (user.username) {
+    profile.username = user.username;
+  }
+
+  const displayName = getDisplayName(user, chat);
+  if (displayName) {
+    profile.displayName = displayName;
+  }
+
+  return profile;
+}
+
+function getDisplayName(
+  user: TelegramCallbackQuery["from"],
+  chat: TelegramMessage["chat"],
+): string | undefined {
+  const name = [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
+  if (name.length > 0) {
+    return name;
+  }
+
+  if (chat.type === "private") {
+    const chatName = [chat.first_name, chat.last_name].filter(Boolean).join(" ").trim();
+    if (chatName.length > 0) {
+      return chatName;
+    }
+  }
+
+  return user.username ?? chat.title ?? chat.username;
 }

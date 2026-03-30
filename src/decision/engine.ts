@@ -1,4 +1,4 @@
-import type { DecisionContext, DecisionResult } from "../domain/types";
+import type { DecisionContext, DecisionResult } from "../domain/types.js";
 
 export function runDecisionEngine(context: DecisionContext): DecisionResult {
   if (!context.setup.isComplete) {

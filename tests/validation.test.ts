@@ -24,6 +24,15 @@ assert(
   "validateAvailableCash should reject negative values.",
 );
 
+assert(
+  !validatePositionInput({
+    asset: "BTC",
+    quantity: "0",
+    averageEntryPrice: "95000000",
+  }).ok,
+  "validatePositionInput should reject a non-zero average entry price when quantity is zero.",
+);
+
 const positionResult = validatePositionInput({
   asset: "ETH",
   quantity: "1.25",

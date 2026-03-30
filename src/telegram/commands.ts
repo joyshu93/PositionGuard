@@ -1,10 +1,9 @@
-import type { TelegramCommandContext, TelegramOutgoingAction, TelegramReplyMarkup, TelegramRouterDependencies, TelegramUserStateSnapshot } from './types';
-import { parseCashAmount, parseSleepModeArg, parseTelegramCallbackAction } from './parser';
+import type { TelegramCommandContext, TelegramOutgoingAction, TelegramReplyMarkup, TelegramRouterDependencies, TelegramUserStateSnapshot } from './types.js';
+import { formatValidationErrors, validatePositionInput } from '../validation.js';
+import { parseCashAmount, parsePositionArgs, parseSleepModeArg, parseTelegramCallbackAction } from './parser.js';
 
 export function routeCommand(context: TelegramCommandContext, deps: TelegramRouterDependencies): Promise<TelegramOutgoingAction[]> {
-  const bootstrap = deps.stateStore?.upsertUserState({
-    telegramUserId: context.userId,
-  });
+  const bootstrap = deps.stateStore?.upsertUserState(context.profile);
   const command = context.command.toLowerCase();
 
   if (command === 'callback') {
@@ -20,6 +19,8 @@ export function routeCommand(context: TelegramCommandContext, deps: TelegramRout
       return Promise.resolve(bootstrap).then(() => handleStatus(context, deps));
     case 'setcash':
       return Promise.resolve(bootstrap).then(() => handleSetCash(context, deps));
+    case 'setposition':
+      return Promise.resolve(bootstrap).then(() => handleSetPosition(context, deps));
     case 'sleep':
       return Promise.resolve(bootstrap).then(() => handleSleep(context, deps));
     default:
@@ -60,7 +61,10 @@ function handleStatus(context: TelegramCommandContext, deps: TelegramRouterDepen
 async function handleSetCash(context: TelegramCommandContext, deps: TelegramRouterDependencies): Promise<TelegramOutgoingAction[]> {
   const amount = parseCashAmount(context.args.join(' '));
   if (amount === null) {
-    return [send(context.chatId, 'Usage: /setcash <amount>\nExample: /setcash 1000000')];
+    return [send(context.chatId, formatValidationErrors(
+      ['Available cash must be a non-negative number.'],
+      'Usage: /setcash <amount>\nExample: /setcash 1000000',
+    ))];
   }
 
   if (deps.stateStore) {
@@ -68,6 +72,41 @@ async function handleSetCash(context: TelegramCommandContext, deps: TelegramRout
   }
 
   return [send(context.chatId, `Cash recorded: ${formatNumber(amount)}.`)];
+}
+
+async function handleSetPosition(context: TelegramCommandContext, deps: TelegramRouterDependencies): Promise<TelegramOutgoingAction[]> {
+  const parsed = parsePositionArgs(context.args);
+  if (!parsed) {
+    return [send(
+      context.chatId,
+      'Usage: /setposition <BTC|ETH> <quantity> <average-entry-price>\nExample: /setposition BTC 0.25 95000000',
+    )];
+  }
+
+  const validation = validatePositionInput(parsed);
+  if (!validation.ok || !validation.value) {
+    return [send(
+      context.chatId,
+      formatValidationErrors(
+        validation.errors,
+        'Usage: /setposition <BTC|ETH> <quantity> <average-entry-price>\nExample: /setposition ETH 1.2 3500000',
+      ),
+    )];
+  }
+
+  if (deps.stateStore) {
+    await deps.stateStore.setPosition({
+      telegramUserId: context.userId,
+      asset: validation.value.asset,
+      quantity: validation.value.quantity,
+      averageEntryPrice: validation.value.averageEntryPrice,
+    });
+  }
+
+  return [send(
+    context.chatId,
+    `${validation.value.asset} spot position recorded: ${formatNumber(validation.value.quantity)} @ avg ${formatNumber(validation.value.averageEntryPrice)} KRW.\nThis is a manual record only. No trade was executed.`,
+  )];
 }
 
 async function handleSleep(context: TelegramCommandContext, deps: TelegramRouterDependencies, forced?: boolean): Promise<TelegramOutgoingAction[]> {
@@ -99,6 +138,7 @@ function buildHelpText(): string {
     '/help - command list',
     '/status - view stored state summary',
     '/setcash <amount> - record available cash',
+    '/setposition <BTC|ETH> <quantity> <average-entry-price> - record spot inventory only',
     '/sleep on - pause alerts',
     '/sleep off - resume alerts',
     '',
@@ -124,7 +164,7 @@ function buildPrimaryKeyboard(): TelegramReplyMarkup {
 
 function formatStatus(state: TelegramUserStateSnapshot | null): string {
   if (!state) {
-    return 'Status is not wired yet. Use /setcash and /sleep after the DB layer is connected.';
+    return 'No stored setup yet. Use /setcash and /setposition to record manual state.';
   }
 
   return [

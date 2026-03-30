@@ -33,6 +33,7 @@ The future decision engine should receive a context object with these categories
 - telegram user identity
 - sleep mode preference
 - whether onboarding is complete
+- setup completeness should remain explicit and user-reported, with account cash plus BTC/ETH position records tracked separately
 
 ### Account State
 - available cash

@@ -1,6 +1,10 @@
-import { parseJson, stringifyJson } from "./db";
-import type { D1DatabaseLike } from "./db";
-import type { DecisionLogInput, DecisionLogRecord } from "../types/persistence";
+import { parseJson, stringifyJson } from "./db.js";
+import type { D1DatabaseLike } from "./db.js";
+import type {
+  DecisionLogInput,
+  DecisionLogLookup,
+  DecisionLogRecord,
+} from "../types/persistence.js";
 
 type DecisionLogRow = {
   id: number;
@@ -83,4 +87,39 @@ export const listDecisionLogsForUser = async (
     .all<DecisionLogRow>();
 
   return result.results.map(mapDecisionLogRow);
+};
+
+export const getLatestDecisionLogForUserAsset = async (
+  db: D1DatabaseLike,
+  userId: number,
+  asset: "BTC" | "ETH",
+): Promise<DecisionLogLookup | null> => {
+  const row = await db
+    .prepare(
+      `SELECT user_id, asset, decision_status, summary, created_at
+       FROM decision_logs
+       WHERE user_id = ? AND asset = ?
+       ORDER BY created_at DESC
+       LIMIT 1`,
+    )
+    .bind(userId, asset)
+    .first<{
+      user_id: number;
+      asset: "BTC" | "ETH";
+      decision_status: "SETUP_INCOMPLETE" | "INSUFFICIENT_DATA" | "NO_ACTION";
+      summary: string;
+      created_at: string;
+    }>();
+
+  if (!row) {
+    return null;
+  }
+
+  return {
+    userId: row.user_id,
+    asset: row.asset,
+    decisionStatus: row.decision_status,
+    summary: row.summary,
+    createdAt: row.created_at,
+  };
 };

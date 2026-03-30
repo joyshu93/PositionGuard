@@ -57,10 +57,23 @@ export interface TelegramUserStateSnapshot {
   cash: number | null;
 }
 
+export interface TelegramUserProfile {
+  telegramUserId: number;
+  telegramChatId: number;
+  username?: string;
+  displayName?: string;
+}
+
 export interface TelegramStateStore {
   getUserState(telegramUserId: number): Promise<TelegramUserStateSnapshot | null>;
-  upsertUserState(input: { telegramUserId: number; cash?: number | null; isSleeping?: boolean }): Promise<void>;
+  upsertUserState(input: TelegramUserProfile): Promise<void>;
   setCash(telegramUserId: number, cash: number): Promise<void>;
+  setPosition(input: {
+    telegramUserId: number;
+    asset: "BTC" | "ETH";
+    quantity: number;
+    averageEntryPrice: number;
+  }): Promise<void>;
   setSleepMode(telegramUserId: number, isSleeping: boolean): Promise<void>;
 }
 
@@ -110,9 +123,9 @@ export interface TelegramCommandContext {
   update: TelegramUpdate;
   chatId: number;
   userId: number;
+  profile: TelegramUserProfile;
   text: string;
   command: string;
   args: string[];
   replyToCallback?: TelegramCallbackQuery;
 }
-

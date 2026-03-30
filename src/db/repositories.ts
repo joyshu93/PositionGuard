@@ -6,18 +6,33 @@ import type {
   SupportedMarket,
   User,
   UserStateBundle,
-} from "../domain/types";
+} from "../domain/types.js";
 import type {
   AccountStateRecord,
   DecisionLogInput,
+  DecisionLogLookup,
   PositionStateRecord,
+  PositionStateInput,
   UserRecord,
   UserStateSnapshot,
-} from "../types/persistence";
-import type { D1DatabaseLike } from "./db";
-import { createDecisionLog } from "./decision-logs";
-import { loadUserStateSnapshotByTelegramId, saveUserReportedAccountState } from "./user-state";
-import { getUserByTelegramId, setUserSleepMode, upsertUser } from "./users";
+} from "../types/persistence.js";
+import type { D1DatabaseLike } from "./db.js";
+import {
+  createDecisionLog,
+  getLatestDecisionLogForUserAsset,
+} from "./decision-logs.js";
+import {
+  loadUserStateSnapshotByTelegramId,
+  loadUserStateSnapshotByUserId,
+  saveUserReportedAccountState,
+  saveUserReportedPositionState,
+} from "./user-state.js";
+import {
+  getUserByTelegramId,
+  setUserOnboardingComplete,
+  setUserSleepMode,
+  upsertUser,
+} from "./users.js";
 
 interface TelegramProfileInput {
   telegramUserId: string;
@@ -44,6 +59,13 @@ export interface TelegramStatusSnapshot {
   positions: Partial<Record<SupportedAsset, PositionState>>;
 }
 
+export interface TelegramProfileSnapshot {
+  telegramUserId: string;
+  telegramChatId: string;
+  username?: string | null;
+  displayName?: string | null;
+}
+
 export async function ensureTelegramUser(
   db: D1DatabaseLike,
   input: TelegramProfileInput,
@@ -66,8 +88,20 @@ export async function setCashByTelegramUserId(
   const record = await saveUserReportedAccountState(db, telegramUserId, {
     availableCash,
   });
+  await syncUserSetupCompleteness(db, telegramUserId);
 
   return mapAccountStateRecord(record);
+}
+
+export async function setPositionByTelegramUserId(
+  db: D1DatabaseLike,
+  telegramUserId: string,
+  input: PositionStateInput,
+): Promise<PositionState> {
+  const record = await saveUserReportedPositionState(db, telegramUserId, input);
+  await syncUserSetupCompleteness(db, telegramUserId);
+
+  return mapPositionRecord(record);
 }
 
 export async function setSleepModeByTelegramUserId(
@@ -89,6 +123,14 @@ export async function getTelegramStatusSnapshot(
   }
 
   return mapUserStateSnapshot(snapshot);
+}
+
+export async function getUserStateBundleByUserId(
+  db: D1DatabaseLike,
+  userId: number,
+): Promise<UserStateBundle | null> {
+  const snapshot = await loadUserStateSnapshotByUserId(db, userId);
+  return snapshot ? mapUserStateSnapshot(snapshot) : null;
 }
 
 export async function listUsersForHourlyRun(
@@ -140,6 +182,14 @@ export async function recordDecisionLog(
   };
 }
 
+export async function getLatestDecisionLogSummary(
+  db: D1DatabaseLike,
+  userId: number,
+  asset: SupportedAsset,
+): Promise<DecisionLogLookup | null> {
+  return getLatestDecisionLogForUserAsset(db, userId, asset);
+}
+
 export async function getUserByTelegramUserId(
   db: D1DatabaseLike,
   telegramUserId: string,
@@ -189,16 +239,36 @@ function mapPositionRecords(
 ): Partial<Record<SupportedAsset, PositionState>> {
   const positions: Partial<Record<SupportedAsset, PositionState>> = {};
   for (const record of records) {
-    positions[record.asset] = {
-      id: record.id,
-      userId: record.userId,
-      asset: record.asset,
-      quantity: record.quantity,
-      averageEntryPrice: record.averageEntryPrice,
-      reportedAt: record.reportedAt,
-      createdAt: record.createdAt,
-      updatedAt: record.updatedAt,
-    };
+    positions[record.asset] = mapPositionRecord(record);
   }
   return positions;
+}
+
+function mapPositionRecord(record: PositionStateRecord): PositionState {
+  return {
+    id: record.id,
+    userId: record.userId,
+    asset: record.asset,
+    quantity: record.quantity,
+    averageEntryPrice: record.averageEntryPrice,
+    reportedAt: record.reportedAt,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+}
+
+async function syncUserSetupCompleteness(
+  db: D1DatabaseLike,
+  telegramUserId: string,
+): Promise<void> {
+  const snapshot = await loadUserStateSnapshotByTelegramId(db, telegramUserId);
+  if (!snapshot) {
+    return;
+  }
+
+  const hasCash = snapshot.accountState !== null;
+  const hasBtc = snapshot.positionStates.some((position) => position.asset === "BTC");
+  const hasEth = snapshot.positionStates.some((position) => position.asset === "ETH");
+
+  await setUserOnboardingComplete(db, telegramUserId, hasCash && hasBtc && hasEth);
 }

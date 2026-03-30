@@ -1,9 +1,9 @@
-import { parseJson, stringifyJson, nowIso } from "./db";
-import type { D1DatabaseLike } from "./db";
+import { parseJson, stringifyJson, nowIso } from "./db.js";
+import type { D1DatabaseLike } from "./db.js";
 import type {
   NotificationEventInput,
   NotificationEventRecord,
-} from "../types/persistence";
+} from "../types/persistence.js";
 
 type NotificationEventRow = {
   id: number;

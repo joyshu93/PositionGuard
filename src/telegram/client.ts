@@ -1,4 +1,4 @@
-import type { TelegramOutgoingAction, TelegramReplyMarkup, TelegramWebhookEnv } from './types';
+import type { TelegramOutgoingAction, TelegramReplyMarkup, TelegramWebhookEnv } from './types.js';
 
 export interface TelegramBotClient {
   sendMessage(chatId: number, text: string, replyMarkup?: TelegramReplyMarkup): Promise<void>;
@@ -51,4 +51,3 @@ async function telegramApiRequest(baseUrl: string, method: string, payload: Reco
     throw new Error(`Telegram API ${method} failed: ${response.status} ${details}`.trim());
   }
 }
-

@@ -1,14 +1,14 @@
-import type { D1DatabaseLike } from "./db";
-import { getLatestAccountStateForUser, saveAccountStateForUser } from "./account-state";
-import { listPositionStatesForUser, savePositionStateForUser } from "./position-state";
+import type { D1DatabaseLike } from "./db.js";
+import { getLatestAccountStateForUser, saveAccountStateForUser } from "./account-state.js";
+import { listPositionStatesForUser, savePositionStateForUser } from "./position-state.js";
 import type {
   AccountStateInput,
   AccountStateRecord,
   PositionStateInput,
   PositionStateRecord,
   UserStateSnapshot,
-} from "../types/persistence";
-import { getUserByTelegramId } from "./users";
+} from "../types/persistence.js";
+import { getUserByTelegramId } from "./users.js";
 
 export const loadUserStateSnapshotByTelegramId = async (
   db: D1DatabaseLike,
@@ -55,4 +55,24 @@ export const saveUserReportedPositionState = async (
   }
 
   return savePositionStateForUser(db, user.id, input);
+};
+
+export const loadUserStateSnapshotByUserId = async (
+  db: D1DatabaseLike,
+  userId: number,
+): Promise<UserStateSnapshot | null> => {
+  const result = await db
+    .prepare(
+      `SELECT telegram_user_id
+       FROM users
+       WHERE id = ?`,
+    )
+    .bind(userId)
+    .first<{ telegram_user_id: string }>();
+
+  if (!result) {
+    return null;
+  }
+
+  return loadUserStateSnapshotByTelegramId(db, result.telegram_user_id);
 };

@@ -1,4 +1,4 @@
-import type { SupportedAsset } from "./domain/types";
+import type { SupportedAsset } from "./domain/types.js";
 
 export interface ValidationResult<T> {
   ok: boolean;
@@ -53,6 +53,14 @@ export function validatePositionInput(input: {
   if (averageEntryPrice === null || averageEntryPrice < 0) {
     errors.push("Average entry price must be a non-negative number.");
   }
+  if (
+    quantity !== null &&
+    averageEntryPrice !== null &&
+    quantity === 0 &&
+    averageEntryPrice > 0
+  ) {
+    errors.push("Average entry price must be 0 when quantity is 0.");
+  }
 
   if (errors.length > 0 || asset === null || quantity === null || averageEntryPrice === null) {
     return {
@@ -88,4 +96,16 @@ export function normalizeAsset(input: string): SupportedAsset | null {
     return upper;
   }
   return null;
+}
+
+export function formatValidationErrors(
+  errors: string[],
+  usage?: string,
+): string {
+  const lines = errors.map((error) => `- ${error}`);
+  if (usage) {
+    lines.push("", usage);
+  }
+
+  return lines.join("\n");
 }

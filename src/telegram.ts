@@ -1,9 +1,9 @@
-import { createTelegramBotClient, executeTelegramActions } from './telegram/client';
-import { callbackContextFromQuery, commandContextFromMessage, parseTelegramUpdate } from './telegram/parser';
-import { routeCommand } from './telegram/commands';
-import type { TelegramOutgoingAction, TelegramRouterDependencies, TelegramUpdate, TelegramWebhookContext, TelegramWebhookEnv } from './telegram/types';
+import { createTelegramBotClient, executeTelegramActions } from './telegram/client.js';
+import { callbackContextFromQuery, commandContextFromMessage, parseTelegramUpdate } from './telegram/parser.js';
+import { routeCommand } from './telegram/commands.js';
+import type { TelegramOutgoingAction, TelegramRouterDependencies, TelegramUpdate, TelegramWebhookContext, TelegramWebhookEnv } from './telegram/types.js';
 
-export { createTelegramBotClient, executeTelegramActions } from './telegram/client';
+export { createTelegramBotClient, executeTelegramActions } from './telegram/client.js';
 export type {
   TelegramCallbackQuery,
   TelegramChat,
@@ -19,7 +19,7 @@ export type {
   TelegramUserStateSnapshot,
   TelegramWebhookContext,
   TelegramWebhookEnv,
-} from './telegram/types';
+} from './telegram/types.js';
 
 export async function handleTelegramWebhook(request: Request, ctx: TelegramWebhookContext): Promise<Response> {
   if (request.method !== 'POST') {
