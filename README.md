@@ -42,7 +42,7 @@ The design is modular monolith by intent: adapters are isolated, domain types st
 
 1. Install dependencies with `npm install`.
 2. Create a D1 database and update the `database_id` in `wrangler.toml`.
-3. Apply the initial migration locally.
+3. Apply the D1 migrations locally.
 4. Configure Telegram and Cloudflare secrets.
 5. Run the Worker locally with Wrangler.
 
@@ -57,7 +57,12 @@ Useful commands:
 - `npm run typecheck`
 - `npm run build`
 - `npm run test`
+- `npm run check`
 - `npm run dev`
+- `npm run deploy:dry-run`
+- `npm run cf:d1:local`
+- `npm run cf:d1:remote`
+- `npm run cf:deploy`
 
 ## D1 Migrations
 
@@ -73,6 +78,8 @@ For remote databases:
 wrangler d1 migrations apply position-guard --remote
 ```
 
+Wrangler applies the numbered migration files in order, so fresh deploys should always use the full migration history under `migrations/`.
+
 The migration history now covers:
 
 - `users`
@@ -83,11 +90,68 @@ The migration history now covers:
 - schema guards for non-negative cash and position values
 - tracked-asset preference persistence for `BTC`, `ETH`, or both
 
+## Deployment
+
+This repository is set up for Cloudflare Workers with a D1 binding named `DB`.
+
+Before deploying, make sure `wrangler.toml` has your real `database_id` and that the required secrets are available to the Worker:
+
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_WEBHOOK_SECRET`
+- optional `UPBIT_BASE_URL`
+
+Recommended deployment checklist:
+
+1. Run local validation.
+2. Apply the full D1 migration history locally if you want a local smoke path.
+3. Create or verify the remote D1 database and replace `database_id` in `wrangler.toml`.
+4. Set Worker secrets in Cloudflare.
+5. Apply the remote D1 migrations.
+6. Deploy the Worker.
+7. Register the Telegram webhook.
+8. Run the post-deploy smoke checks below.
+
+Copy-pasteable deployment commands:
+
+```powershell
+npm run check
+npm run cf:d1:local
+wrangler secret put TELEGRAM_BOT_TOKEN
+wrangler secret put TELEGRAM_WEBHOOK_SECRET
+# Optional only if you need a non-default public quotation endpoint:
+# wrangler secret put UPBIT_BASE_URL
+npm run cf:d1:remote
+npm run cf:deploy
+```
+
+If you prefer the direct Wrangler commands instead of the package aliases:
+
+```powershell
+wrangler d1 migrations apply position-guard --remote
+wrangler deploy
+```
+
+After deployment, register the Telegram webhook to the Worker endpoint:
+
+```powershell
+curl.exe "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" `
+  -H "Content-Type: application/json" `
+  -d "{\"url\":\"https://<your-worker-domain>/telegram/webhook\",\"secret_token\":\"<TELEGRAM_WEBHOOK_SECRET>\"}"
+```
+
+Or use the helper script after exporting the token and secret:
+
+```powershell
+$env:TELEGRAM_BOT_TOKEN = "<your-bot-token>"
+$env:TELEGRAM_WEBHOOK_SECRET = "<your-webhook-secret>"
+npm run telegram:webhook:set -- --url https://<your-worker-domain>/telegram/webhook
+```
+
 ## Webhook Setup
 
-The Telegram bot should receive updates via webhook. The Worker is expected to expose a Telegram webhook endpoint and validate the incoming secret before routing commands.
+The Telegram bot should receive updates via webhook. The Worker exposes `POST /telegram/webhook` and validates `x-telegram-bot-api-secret-token` against `TELEGRAM_WEBHOOK_SECRET`.
 
-Set the Telegram webhook URL to your Worker endpoint and include the secret configured in `TELEGRAM_WEBHOOK_SECRET`.
+Set the Telegram webhook URL to your Worker endpoint and include the same secret configured in `TELEGRAM_WEBHOOK_SECRET`.
 
 Default routes:
 
@@ -95,13 +159,43 @@ Default routes:
 - `GET /health`
 - `POST /telegram/webhook`
 
-Example webhook registration:
+## Smoke Test
 
-```bash
-curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" ^
-  -H "Content-Type: application/json" ^
-  -d "{\"url\":\"https://<your-worker-domain>/telegram/webhook\",\"secret_token\":\"<TELEGRAM_WEBHOOK_SECRET>\"}"
+Use these commands to verify the deployed Worker without claiming any remote success ahead of time:
+
+```powershell
+curl.exe https://<your-worker-domain>/
+curl.exe https://<your-worker-domain>/health
+curl.exe -i -X POST "https://<your-worker-domain>/telegram/webhook" `
+  -H "Content-Type: application/json" `
+  -H "x-telegram-bot-api-secret-token: wrong-secret" `
+  -d "{}"
+curl.exe -i -X POST "https://<your-worker-domain>/telegram/webhook" `
+  -H "Content-Type: application/json" `
+  -H "x-telegram-bot-api-secret-token: <TELEGRAM_WEBHOOK_SECRET>" `
+  -d "{\"update_id\":1,\"message\":{\"message_id\":1,\"date\":1,\"chat\":{\"id\":123456789,\"type\":\"private\"},\"from\":{\"id\":123456789,\"first_name\":\"Smoke\"},\"text\":\"/start\"}}"
+curl.exe "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/getWebhookInfo"
 ```
+
+Expected results:
+
+- `GET /` returns a small JSON service banner
+- `GET /health` returns `200` with `status: healthy` when deployment config is complete, or `500` with explicit config errors when it is not
+- `POST /telegram/webhook` with the wrong secret returns `403 Forbidden`
+- `POST /telegram/webhook` with a valid secret returns `200 OK`
+- `getWebhookInfo` shows the Worker URL and the configured secret token state
+
+Safe Telegram command smoke path after webhook registration:
+
+1. Send `/start`
+2. Send `/track BTC` or `/track BOTH`
+3. Send `/setcash 1000000`
+4. Send `/setposition BTC 0 0` or another manual spot record
+5. Send `/status`
+6. Send `/lastdecision`
+7. Send `/hourlyhealth`
+
+All of these remain record-only. No order execution, private exchange access, or live balance sync is involved.
 
 ## Cron Setup
 
@@ -116,6 +210,12 @@ The hourly decision scaffold is intended to run from a Cloudflare scheduled trig
 - record sent or skipped notification events when that policy applies
 
 The current stage should remain conservative and avoid noisy alerts.
+
+For deploy-time debugging:
+
+- `/health` reports missing `DB`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, and invalid `UPBIT_BASE_URL` configuration clearly
+- webhook requests with the wrong secret return `403`
+- Telegram dispatch failures are logged server-side but acknowledged with `200 OK` to avoid retry storms from Telegram
 
 ## Temporary Alert Policy
 

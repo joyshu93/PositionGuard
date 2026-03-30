@@ -3,6 +3,11 @@ main = "src/index.ts"
 compatibility_date = "2026-03-30"
 compatibility_flags = ["nodejs_compat"]
 minify = false
+keep_vars = true
+
+[vars]
+HEALTH_PATH = "/health"
+TELEGRAM_WEBHOOK_PATH = "/telegram/webhook"
 
 [[d1_databases]]
 binding = "DB"
@@ -12,4 +17,3 @@ migrations_dir = "migrations"
 
 [triggers]
 crons = ["0 * * * *"]
-

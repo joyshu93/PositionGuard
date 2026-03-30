@@ -1,6 +1,9 @@
 import {
+  createRuntimeConfig,
+  assertRuntimeConfig,
   DEFAULT_HEALTH_PATH,
   DEFAULT_TELEGRAM_WEBHOOK_PATH,
+  getRuntimeConfigReport,
   type Env,
 } from "./env.js";
 import { runHourlyCycle } from "./hourly.js";
@@ -35,6 +38,7 @@ export default {
     return handleFetch(request, env, ctx);
   },
   async scheduled(_controller, env, _ctx) {
+    assertRuntimeConfig(env, "scheduled");
     await runHourlyCycle(env);
   },
 } satisfies ExportedHandler<Env>;
@@ -45,8 +49,10 @@ async function handleFetch(
   _ctx: ExecutionContext,
 ): Promise<Response> {
   const url = new URL(request.url);
-  const healthPath = env.HEALTH_PATH ?? DEFAULT_HEALTH_PATH;
-  const webhookPath = env.TELEGRAM_WEBHOOK_PATH ?? DEFAULT_TELEGRAM_WEBHOOK_PATH;
+  const configReport = getRuntimeConfigReport(env, "health");
+  const deployReport = getRuntimeConfigReport(env, "webhook");
+  const healthPath = configReport.healthPath;
+  const webhookPath = configReport.webhookPath;
 
   if (request.method === "GET" && url.pathname === "/") {
     return jsonResponse({
@@ -55,23 +61,53 @@ async function handleFetch(
       healthPath,
       webhookPath,
       scope: "telegram BTC/ETH spot position coach scaffold",
+      configOk: deployReport.ok,
     });
   }
 
   if (request.method === "GET" && url.pathname === healthPath) {
     return jsonResponse({
-      ok: true,
-      status: "healthy",
+      ok: deployReport.ok,
+      status: deployReport.ok ? "healthy" : "misconfigured",
       service: "position-guard",
       mode: "scaffold",
-    });
+      checks: {
+        d1Binding: !deployReport.errors.some((error) => error.includes("D1 binding")),
+        telegramBotToken: !deployReport.errors.some((error) =>
+          error.includes("TELEGRAM_BOT_TOKEN")
+        ),
+        telegramWebhookSecret: !deployReport.errors.some((error) =>
+          error.includes("TELEGRAM_WEBHOOK_SECRET")
+        ),
+        routePaths:
+          !deployReport.errors.some((error) => error.includes("HEALTH_PATH")) &&
+          !deployReport.errors.some((error) => error.includes("TELEGRAM_WEBHOOK_PATH")),
+        upbitBaseUrl: !deployReport.errors.some((error) =>
+          error.includes("UPBIT_BASE_URL")
+        ),
+      },
+      errors: deployReport.errors,
+    }, deployReport.ok ? 200 : 500);
   }
 
   if (url.pathname === webhookPath) {
+    const webhookConfig = getRuntimeConfigReport(env, "webhook");
+    if (!webhookConfig.ok) {
+      return jsonResponse(
+        {
+          ok: false,
+          error: "Webhook configuration is invalid.",
+          details: webhookConfig.errors,
+        },
+        500,
+      );
+    }
+
+    const runtime = createRuntimeConfig(env);
     const telegramEnv = {
-      TELEGRAM_BOT_TOKEN: env.TELEGRAM_BOT_TOKEN,
-      ...(env.TELEGRAM_WEBHOOK_SECRET
-        ? { TELEGRAM_WEBHOOK_SECRET: env.TELEGRAM_WEBHOOK_SECRET }
+      TELEGRAM_BOT_TOKEN: runtime.telegramBotToken,
+      ...(runtime.telegramWebhookSecret
+        ? { TELEGRAM_WEBHOOK_SECRET: runtime.telegramWebhookSecret }
         : {}),
     };
 

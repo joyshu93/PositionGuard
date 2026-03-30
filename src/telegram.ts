@@ -2,6 +2,7 @@ import { createTelegramBotClient, executeTelegramActions } from './telegram/clie
 import { callbackContextFromQuery, commandContextFromMessage, parseTelegramUpdate } from './telegram/parser.js';
 import { routeCommand } from './telegram/commands.js';
 import type { TelegramOutgoingAction, TelegramRouterDependencies, TelegramUpdate, TelegramWebhookContext, TelegramWebhookEnv } from './telegram/types.js';
+import { getRuntimeConfigReport } from './env.js';
 
 export { createTelegramBotClient, executeTelegramActions } from './telegram/client.js';
 export type {
@@ -40,6 +41,25 @@ export async function handleTelegramWebhook(request: Request, ctx: TelegramWebho
     return new Response('Method Not Allowed', { status: 405, headers: { allow: 'POST' } });
   }
 
+  const configReport = getRuntimeConfigReport(
+    {
+      DB: {} as unknown as D1Database,
+      TELEGRAM_BOT_TOKEN: ctx.env.TELEGRAM_BOT_TOKEN,
+      ...(ctx.env.TELEGRAM_WEBHOOK_SECRET
+        ? { TELEGRAM_WEBHOOK_SECRET: ctx.env.TELEGRAM_WEBHOOK_SECRET }
+        : {}),
+    },
+    'webhook',
+  );
+  const relevantErrors = configReport.errors.filter(
+    (error) =>
+      error.includes('TELEGRAM_BOT_TOKEN') ||
+      error.includes('TELEGRAM_WEBHOOK_SECRET'),
+  );
+  if (relevantErrors.length > 0) {
+    return new Response(relevantErrors.join(' '), { status: 500 });
+  }
+
   if (!isAuthorizedWebhook(request, ctx.env)) {
     return new Response('Forbidden', { status: 403 });
   }
@@ -51,12 +71,12 @@ export async function handleTelegramWebhook(request: Request, ctx: TelegramWebho
   }
 
   const client = createTelegramBotClient(ctx.env);
-  const actions = await routeTelegramUpdate(update, ctx.deps);
-
   try {
+    const actions = await routeTelegramUpdate(update, ctx.deps);
     await executeTelegramActions(client, actions);
   } catch (error) {
-    return new Response(error instanceof Error ? error.message : 'Telegram dispatch failed', { status: 502 });
+    console.error('[telegram] webhook handling failed', error);
+    return new Response('OK');
   }
 
   return new Response('OK');

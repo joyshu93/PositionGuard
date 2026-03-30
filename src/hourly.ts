@@ -1,4 +1,4 @@
-import type { Env } from "./env.js";
+import { createRuntimeConfig, type Env, type RuntimeConfig } from "./env.js";
 import type {
   DecisionLogRecord,
   DecisionResult,
@@ -35,11 +35,12 @@ const SUPPORTED_ASSETS: SupportedAsset[] = ["BTC", "ETH"];
 const DECISION_LOG_COOLDOWN_MS = 50 * 60 * 1000;
 
 export async function runHourlyCycle(env: Env): Promise<void> {
-  const userStates = await listUsersForHourlyRun(env.DB);
+  const runtime = createRuntimeConfig(env);
+  const userStates = await listUsersForHourlyRun(runtime.db);
   const telegramClient = createTelegramBotClient({
-    TELEGRAM_BOT_TOKEN: env.TELEGRAM_BOT_TOKEN,
-    ...(env.TELEGRAM_WEBHOOK_SECRET
-      ? { TELEGRAM_WEBHOOK_SECRET: env.TELEGRAM_WEBHOOK_SECRET }
+    TELEGRAM_BOT_TOKEN: runtime.telegramBotToken,
+    ...(runtime.telegramWebhookSecret
+      ? { TELEGRAM_WEBHOOK_SECRET: runtime.telegramWebhookSecret }
       : {}),
   });
 
@@ -51,19 +52,19 @@ export async function runHourlyCycle(env: Env): Promise<void> {
       }
 
       const market = getMarketForAsset(asset);
-      await processAssetCycle(env, telegramClient, userState, asset, market);
+      await processAssetCycle(runtime, telegramClient, userState, asset, market);
     }
   }
 }
 
 async function processAssetCycle(
-  env: Env,
+  env: RuntimeConfig,
   telegramClient: ReturnType<typeof createTelegramBotClient>,
   userState: UserStateBundle,
   asset: SupportedAsset,
   market: SupportedMarket,
 ): Promise<DecisionLogRecord | null> {
-  const marketResult = await getMarketSnapshotResult(env.UPBIT_BASE_URL, market);
+  const marketResult = await getMarketSnapshotResult(env.upbitBaseUrl ?? undefined, market);
   const marketSnapshot = marketResult.ok ? marketResult.snapshot : null;
   const context = buildDecisionContext({
     userState,
@@ -72,12 +73,12 @@ async function processAssetCycle(
   });
   const baseDecision = runDecisionEngine(context);
   const previousDecision = await getLatestDecisionLogSummary(
-    env.DB,
+    env.db,
     userState.user.id,
     asset,
   );
   const recentDecisionLogs = await listRecentDecisionLogSummaries(
-    env.DB,
+    env.db,
     userState.user.id,
     asset,
     6,
@@ -110,7 +111,7 @@ async function processAssetCycle(
     userState.user.telegramChatId !== null;
 
   const notificationState = await evaluateNotificationState({
-    db: env.DB,
+    db: env.db,
     telegramClient,
     userState,
     asset,
@@ -119,7 +120,7 @@ async function processAssetCycle(
     marketResult,
   });
 
-  return recordDecisionLog(env.DB, {
+  return recordDecisionLog(env.db, {
     userId: userState.user.id,
     asset,
     market,
