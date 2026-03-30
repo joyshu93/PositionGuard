@@ -1,4 +1,9 @@
-import type { PositionState, UserStateBundle } from "./domain/types.js";
+import type {
+  PositionState,
+  SupportedAsset,
+  UserStateBundle,
+} from "./domain/types.js";
+import { assessReadiness } from "./readiness.js";
 
 export interface RecentNotificationSummary {
   deliveryStatus: "SENT" | "SKIPPED";
@@ -9,24 +14,24 @@ export interface RecentNotificationSummary {
 }
 
 export interface SetupCompleteness {
+  trackedAssets: SupportedAsset[];
   hasCash: boolean;
-  hasBtcPosition: boolean;
-  hasEthPosition: boolean;
+  readyPositionAssets: SupportedAsset[];
   isComplete: boolean;
+  missingItems: string[];
 }
 
 export function assessSetupCompleteness(
-  userState: Pick<UserStateBundle, "accountState" | "positions">,
+  userState: Pick<UserStateBundle, "user" | "accountState" | "positions">,
 ): SetupCompleteness {
-  const hasCash = userState.accountState !== null;
-  const hasBtcPosition = userState.positions.BTC !== undefined;
-  const hasEthPosition = userState.positions.ETH !== undefined;
+  const readiness = assessReadiness(userState);
 
   return {
-    hasCash,
-    hasBtcPosition,
-    hasEthPosition,
-    isComplete: hasCash && hasBtcPosition && hasEthPosition,
+    trackedAssets: readiness.trackedAssets,
+    hasCash: readiness.hasCashRecord,
+    readyPositionAssets: readiness.readyPositionAssets,
+    isComplete: readiness.isReady,
+    missingItems: readiness.missingItems,
   };
 }
 
@@ -37,6 +42,7 @@ export function renderStatusMessage(
   if (!userState) {
     return [
       "No stored setup yet.",
+      "Tracked assets default to BTC and ETH until you choose otherwise.",
       "Record available cash with /setcash <amount>.",
       "Record BTC or ETH spot state with /setposition <BTC|ETH> <quantity> <average-entry-price>.",
       "This bot records manual state only. It does not execute trades.",
@@ -47,7 +53,8 @@ export function renderStatusMessage(
 
   return [
     `Sleep mode: ${userState.user.sleepModeEnabled ? "on" : "off"}`,
-    `Setup completeness: ${completeness.isComplete ? "complete" : "incomplete"}`,
+    `Tracked assets: ${formatTrackedAssets(completeness.trackedAssets)}`,
+    `Setup readiness: ${completeness.isComplete ? "ready" : "incomplete"}`,
     `Available cash: ${
       userState.accountState
         ? `${formatNumber(userState.accountState.availableCash)} KRW`
@@ -55,7 +62,7 @@ export function renderStatusMessage(
     }`,
     `BTC spot record: ${formatPosition(userState.positions.BTC)}`,
     `ETH spot record: ${formatPosition(userState.positions.ETH)}`,
-    `Missing setup items: ${formatMissingItems(completeness)}`,
+    `Missing next steps: ${formatMissingItems(completeness)}`,
     ...formatRecentNotifications(recentNotifications),
     "State is record-only. No trade execution is performed.",
   ].join("\n");
@@ -72,18 +79,9 @@ function formatPosition(position: PositionState | undefined): string {
 }
 
 function formatMissingItems(completeness: SetupCompleteness): string {
-  const missing: string[] = [];
-  if (!completeness.hasCash) {
-    missing.push("cash");
-  }
-  if (!completeness.hasBtcPosition) {
-    missing.push("BTC position");
-  }
-  if (!completeness.hasEthPosition) {
-    missing.push("ETH position");
-  }
-
-  return missing.length > 0 ? missing.join(", ") : "none";
+  return completeness.missingItems.length > 0
+    ? completeness.missingItems.join(", ")
+    : "none";
 }
 
 function formatNumber(value: number): string {
@@ -109,4 +107,8 @@ function formatRecentNotifications(
       return `- ${notification.deliveryStatus} ${reason}${extra}`;
     }),
   ];
+}
+
+function formatTrackedAssets(trackedAssets: SupportedAsset[]): string {
+  return trackedAssets.join(", ");
 }

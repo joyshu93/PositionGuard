@@ -33,8 +33,9 @@ The future decision engine should receive a context object with these categories
 ### User Setup
 - telegram user identity
 - sleep mode preference
+- tracked asset preference, limited to BTC, ETH, or both
 - whether onboarding is complete
-- setup completeness should remain explicit and user-reported, with account cash plus BTC/ETH position records tracked separately
+- setup readiness should remain explicit and user-reported, with account cash plus the selected tracked asset position records tracked separately
 
 ### Account State
 - available cash
@@ -76,7 +77,7 @@ Future statuses may later include scenario or management categories, but they sh
 
 ## Temporary Alert Policy
 `ACTION_NEEDED` is intentionally narrow and temporary. It should only be used for explicit, inspectable cases such as:
-- incomplete user setup that requires manual cash or position input
+- incomplete user setup that requires manual cash or tracked-asset position input
 - repeated public market snapshot failure for an existing position after several consecutive hourly failures
 - clearly contradictory stored state that the user must correct
 
@@ -86,6 +87,11 @@ Notification behavior under this contract should remain conservative:
 - respect sleep mode strictly
 - keep message text short, concrete, and record-oriented
 - expose recent alert state through lightweight debug inspection, such as `/lastalert`
+
+Current MVP readiness semantics are:
+- tracked assets default conservatively to BTC and ETH for users who have not chosen yet
+- readiness requires a cash record plus position records for the chosen tracked assets only
+- users are not required to configure both BTC and ETH if they only intend to track one
 
 ## Decision Log Expectations
 Each decision log should capture:

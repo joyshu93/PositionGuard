@@ -109,6 +109,27 @@ export function parseTelegramCallbackAction(data: string | undefined): TelegramC
   if (data === 'status:refresh') {
     return { kind: 'status:refresh' };
   }
+  if (data === 'setup:progress') {
+    return { kind: 'setup:progress' };
+  }
+  if (data === 'setup:cash') {
+    return { kind: 'setup:cash' };
+  }
+  if (data === 'setup:track:btc') {
+    return { kind: 'setup:track', trackedAssets: 'BTC' };
+  }
+  if (data === 'setup:track:eth') {
+    return { kind: 'setup:track', trackedAssets: 'ETH' };
+  }
+  if (data === 'setup:track:both') {
+    return { kind: 'setup:track', trackedAssets: 'BOTH' };
+  }
+  if (data === 'setup:position:btc') {
+    return { kind: 'setup:position', asset: 'BTC' };
+  }
+  if (data === 'setup:position:eth') {
+    return { kind: 'setup:position', asset: 'ETH' };
+  }
 
   return null;
 }

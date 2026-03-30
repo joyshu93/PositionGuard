@@ -8,6 +8,7 @@ type UserRow = {
   telegram_chat_id: string | null;
   username: string | null;
   display_name: string | null;
+  tracked_assets: "BTC" | "ETH" | "BTC,ETH";
   sleep_mode: number;
   onboarding_complete: number;
   created_at: string;
@@ -20,6 +21,7 @@ const mapUserRow = (row: UserRow): UserRecord => ({
   telegramChatId: row.telegram_chat_id,
   username: row.username,
   displayName: row.display_name,
+  trackedAssets: row.tracked_assets,
   sleepMode: intToBool(row.sleep_mode),
   onboardingComplete: intToBool(row.onboarding_complete),
   createdAt: row.created_at,
@@ -32,7 +34,7 @@ export const getUserByTelegramId = async (
 ): Promise<UserRecord | null> => {
   const row = await db
     .prepare(
-      `SELECT id, telegram_user_id, telegram_chat_id, username, display_name, sleep_mode, onboarding_complete, created_at, updated_at
+      `SELECT id, telegram_user_id, telegram_chat_id, username, display_name, tracked_assets, sleep_mode, onboarding_complete, created_at, updated_at
        FROM users
        WHERE telegram_user_id = ?`,
     )
@@ -52,14 +54,15 @@ export const upsertUser = async (
   if (!existing) {
     await db
       .prepare(
-        `INSERT INTO users (telegram_user_id, telegram_chat_id, username, display_name, sleep_mode, onboarding_complete, created_at, updated_at)
-         VALUES (?, ?, ?, ?, 0, 0, ?, ?)`,
+        `INSERT INTO users (telegram_user_id, telegram_chat_id, username, display_name, tracked_assets, sleep_mode, onboarding_complete, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?)`,
       )
       .bind(
         input.telegramUserId,
         input.telegramChatId ?? null,
         input.username ?? null,
         input.displayName ?? null,
+        input.trackedAssets ?? "BTC,ETH",
         timestamp,
         timestamp,
       )
@@ -78,6 +81,7 @@ export const upsertUser = async (
        SET telegram_chat_id = COALESCE(?, telegram_chat_id),
            username = COALESCE(?, username),
            display_name = COALESCE(?, display_name),
+           tracked_assets = COALESCE(?, tracked_assets),
            updated_at = ?
        WHERE telegram_user_id = ?`,
     )
@@ -85,6 +89,7 @@ export const upsertUser = async (
       input.telegramChatId ?? null,
       input.username ?? null,
       input.displayName ?? null,
+      input.trackedAssets ?? null,
       timestamp,
       input.telegramUserId,
     )
@@ -130,6 +135,27 @@ export const setUserOnboardingComplete = async (
        WHERE telegram_user_id = ?`,
     )
     .bind(boolToInt(onboardingComplete), nowIso(), telegramUserId)
+    .run();
+
+  const user = await getUserByTelegramId(db, telegramUserId);
+  if (!user) {
+    throw new Error("User not found");
+  }
+  return user;
+};
+
+export const setUserTrackedAssets = async (
+  db: D1DatabaseLike,
+  telegramUserId: string,
+  trackedAssets: "BTC" | "ETH" | "BTC,ETH",
+): Promise<UserRecord> => {
+  await db
+    .prepare(
+      `UPDATE users
+       SET tracked_assets = ?, updated_at = ?
+       WHERE telegram_user_id = ?`,
+    )
+    .bind(trackedAssets, nowIso(), telegramUserId)
     .run();
 
   const user = await getUserByTelegramId(db, telegramUserId);

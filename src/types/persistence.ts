@@ -1,5 +1,6 @@
 export type AssetSymbol = "BTC" | "ETH";
 export type MarketSymbol = "KRW-BTC" | "KRW-ETH";
+export type TrackedAssetPreferenceRecord = "BTC" | "ETH" | "BTC,ETH";
 
 export interface UserRecord {
   id: number;
@@ -7,6 +8,7 @@ export interface UserRecord {
   telegramChatId: string | null;
   username: string | null;
   displayName: string | null;
+  trackedAssets: TrackedAssetPreferenceRecord;
   sleepMode: boolean;
   onboardingComplete: boolean;
   createdAt: string;
@@ -18,6 +20,7 @@ export interface UserProfileInput {
   telegramChatId?: string | null;
   username?: string | null;
   displayName?: string | null;
+  trackedAssets?: TrackedAssetPreferenceRecord | null;
 }
 
 export interface AccountStateRecord {

@@ -4,6 +4,7 @@ import type {
   PositionState,
   SupportedAsset,
   SupportedMarket,
+  TrackedAssetPreference,
   User,
   UserStateBundle,
 } from "../domain/types.js";
@@ -37,8 +38,10 @@ import {
   getUserByTelegramId,
   setUserOnboardingComplete,
   setUserSleepMode,
+  setUserTrackedAssets,
   upsertUser,
 } from "./users.js";
+import { assessReadiness } from "../readiness.js";
 
 interface TelegramProfileInput {
   telegramUserId: string;
@@ -130,6 +133,16 @@ export async function setSleepModeByTelegramUserId(
   enabled: boolean,
 ): Promise<User> {
   const record = await setUserSleepMode(db, telegramUserId, enabled);
+  return mapUserRecord(record);
+}
+
+export async function setTrackedAssetsByTelegramUserId(
+  db: D1DatabaseLike,
+  telegramUserId: string,
+  trackedAssets: TrackedAssetPreference,
+): Promise<User> {
+  const record = await setUserTrackedAssets(db, telegramUserId, trackedAssets);
+  await syncUserSetupCompleteness(db, telegramUserId);
   return mapUserRecord(record);
 }
 
@@ -268,6 +281,7 @@ function mapUserRecord(record: UserRecord): User {
     telegramChatId: record.telegramChatId,
     username: record.username,
     displayName: record.displayName,
+    trackedAssets: record.trackedAssets,
     sleepModeEnabled: record.sleepMode,
     onboardingComplete: record.onboardingComplete,
     createdAt: record.createdAt,
@@ -319,9 +333,6 @@ async function syncUserSetupCompleteness(
     return;
   }
 
-  const hasCash = snapshot.accountState !== null;
-  const hasBtc = snapshot.positionStates.some((position) => position.asset === "BTC");
-  const hasEth = snapshot.positionStates.some((position) => position.asset === "ETH");
-
-  await setUserOnboardingComplete(db, telegramUserId, hasCash && hasBtc && hasEth);
+  const readiness = assessReadiness(mapUserStateSnapshot(snapshot));
+  await setUserOnboardingComplete(db, telegramUserId, readiness.isReady);
 }

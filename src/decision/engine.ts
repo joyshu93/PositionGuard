@@ -1,7 +1,7 @@
 import type { DecisionContext, DecisionResult } from "../domain/types.js";
 
 export function runDecisionEngine(context: DecisionContext): DecisionResult {
-  if (!context.setup.isComplete) {
+  if (!context.setup.isReady) {
     return {
       status: "SETUP_INCOMPLETE",
       summary: "Manual setup is incomplete; waiting for user-reported inputs.",

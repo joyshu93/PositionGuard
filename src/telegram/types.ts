@@ -55,7 +55,10 @@ export interface TelegramUserStateSnapshot {
   telegramUserId: number;
   isSleeping: boolean;
   cash: number | null;
+  trackedAssets: "BTC" | "ETH" | "BTC,ETH";
 }
+
+export type TelegramTrackedAssetsSelection = "BTC" | "ETH" | "BOTH";
 
 export type TelegramActionNeededReason =
   | "SETUP_INCOMPLETE"
@@ -98,10 +101,27 @@ export interface TelegramNotificationProvider {
   getLastAlert(telegramUserId: number): Promise<TelegramNotificationSnapshot | null>;
 }
 
+export interface TelegramOnboardingSnapshot {
+  trackedAssets: ("BTC" | "ETH")[];
+  hasCashRecord: boolean;
+  trackedPositionAssets: ("BTC" | "ETH")[];
+  isReady: boolean;
+  missingNextSteps: string[];
+}
+
+export interface TelegramOnboardingProvider {
+  getOnboardingSnapshot(telegramUserId: number): Promise<TelegramOnboardingSnapshot | null>;
+  setTrackedAssets(
+    telegramUserId: number,
+    trackedAssets: ("BTC" | "ETH")[],
+  ): Promise<TelegramOnboardingSnapshot | null>;
+}
+
 export interface TelegramRouterDependencies {
   stateStore?: TelegramStateStore;
   statusProvider?: TelegramStatusProvider;
   notificationProvider?: TelegramNotificationProvider;
+  onboardingProvider?: TelegramOnboardingProvider;
 }
 
 export interface TelegramWebhookContext {
@@ -112,7 +132,11 @@ export interface TelegramWebhookContext {
 export type TelegramCallbackAction =
   | { kind: 'sleep:on' }
   | { kind: 'sleep:off' }
-  | { kind: 'status:refresh' };
+  | { kind: 'status:refresh' }
+  | { kind: 'setup:progress' }
+  | { kind: 'setup:track'; trackedAssets: TelegramTrackedAssetsSelection }
+  | { kind: 'setup:cash' }
+  | { kind: 'setup:position'; asset: "BTC" | "ETH" };
 
 export interface TelegramReplyMarkupButton {
   text: string;

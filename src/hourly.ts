@@ -27,6 +27,7 @@ import {
   getLatestNotificationEventForUserAssetReason,
 } from "./db/notification-events.js";
 import { createTelegramBotClient } from "./telegram/client.js";
+import { parseTrackedAssets } from "./readiness.js";
 
 const SUPPORTED_ASSETS: SupportedAsset[] = ["BTC", "ETH"];
 const DECISION_LOG_COOLDOWN_MS = 50 * 60 * 1000;
@@ -41,7 +42,12 @@ export async function runHourlyCycle(env: Env): Promise<void> {
   });
 
   for (const userState of userStates) {
+    const trackedAssets = parseTrackedAssets(userState.user.trackedAssets);
     for (const asset of SUPPORTED_ASSETS) {
+      if (!trackedAssets.includes(asset)) {
+        continue;
+      }
+
       const market = getMarketForAsset(asset);
       await processAssetCycle(env, telegramClient, userState, asset, market);
     }

@@ -13,10 +13,13 @@ export type {
   TelegramOutgoingAction,
   TelegramReplyMarkup,
   TelegramRouterDependencies,
+  TelegramOnboardingProvider,
+  TelegramOnboardingSnapshot,
   TelegramNotificationProvider,
   TelegramNotificationSnapshot,
   TelegramStateStore,
   TelegramStatusProvider,
+  TelegramTrackedAssetsSelection,
   TelegramUpdate,
   TelegramUser,
   TelegramUserStateSnapshot,
@@ -26,6 +29,7 @@ export type {
 export {
   buildActionNeededAlertActions,
   buildActionNeededAlertText,
+  buildOnboardingKeyboard,
 } from './telegram/commands.js';
 
 export async function handleTelegramWebhook(request: Request, ctx: TelegramWebhookContext): Promise<Response> {

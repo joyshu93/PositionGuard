@@ -9,6 +9,7 @@ const userState: UserStateBundle = {
     telegramChatId: "456",
     username: "tester",
     displayName: "Test User",
+    trackedAssets: "BTC,ETH",
     sleepModeEnabled: false,
     onboardingComplete: false,
     createdAt: "2026-01-01T00:00:00.000Z",
@@ -70,7 +71,7 @@ const completeContext = buildDecisionContext({
   generatedAt: "2026-01-01T01:00:00.000Z",
 });
 
-assert(completeContext.setup.isComplete, "Decision context should mark complete setup.");
+assert(completeContext.setup.isReady, "Decision context should mark ready setup.");
 assertEqual(
   completeContext.positionState?.asset ?? null,
   "BTC",
@@ -85,7 +86,12 @@ assertEqual(
 assertEqual(
   completeContext.setup.missingItems.length,
   0,
-  "Decision context should not report missing items for complete setup.",
+  "Decision context should not report missing items for ready setup.",
+);
+assertEqual(
+  completeContext.setup.trackedAssets.join(","),
+  "BTC,ETH",
+  "Decision context should preserve the user's tracked asset preference.",
 );
 
 const incompleteContext = buildDecisionContext({
@@ -99,11 +105,19 @@ const incompleteContext = buildDecisionContext({
 });
 
 assert(
-  !incompleteContext.setup.isComplete,
-  "Decision context should mark setup incomplete when position data is missing.",
+  !incompleteContext.setup.isReady,
+  "Decision context should mark setup incomplete when tracked positions are missing.",
 );
 assertEqual(
   incompleteContext.positionState ?? null,
   null,
   "Decision context should not invent a missing position state.",
+);
+assert(
+  incompleteContext.setup.missingItems.includes("BTC position"),
+  "Decision context should report missing BTC position when none is tracked.",
+);
+assert(
+  incompleteContext.setup.missingItems.includes("ETH position"),
+  "Decision context should report missing ETH position when none is tracked.",
 );

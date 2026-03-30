@@ -6,14 +6,17 @@ import {
 import { runHourlyCycle } from "./hourly.js";
 import { handleTelegramWebhook } from "./telegram.js";
 import {
+  getUserByTelegramUserId,
   ensureTelegramUser,
   getTelegramStatusSnapshot,
   getUserStateBundleByUserId,
   listRecentNotificationEventSummaries,
+  setTrackedAssetsByTelegramUserId,
   setCashByTelegramUserId,
   setPositionByTelegramUserId,
   setSleepModeByTelegramUserId,
 } from "./db/repositories.js";
+import { assessReadiness } from "./readiness.js";
 import { renderStatusMessage } from "./status.js";
 import type { TelegramActionNeededReason } from "./telegram.js";
 
@@ -83,6 +86,7 @@ async function handleFetch(
               telegramUserId,
               isSleeping: snapshot.user.sleepModeEnabled,
               cash: snapshot.accountState?.availableCash ?? null,
+              trackedAssets: snapshot.user.trackedAssets,
             };
           },
           async upsertUserState(input) {
@@ -109,6 +113,55 @@ async function handleFetch(
               String(telegramUserId),
               isSleeping,
             );
+          },
+        },
+        onboardingProvider: {
+          async getOnboardingSnapshot(telegramUserId) {
+            const user = await getUserByTelegramUserId(env.DB, String(telegramUserId));
+            if (!user) {
+              return null;
+            }
+
+            const userState = await getUserStateBundleByUserId(env.DB, user.id);
+            if (!userState) {
+              return null;
+            }
+
+            const readiness = assessReadiness(userState);
+            return {
+              trackedAssets: readiness.trackedAssets,
+              hasCashRecord: readiness.hasCashRecord,
+              trackedPositionAssets: readiness.readyPositionAssets,
+              isReady: readiness.isReady,
+              missingNextSteps: readiness.missingItems,
+            };
+          },
+          async setTrackedAssets(telegramUserId, trackedAssets) {
+            const preference = trackedAssets[0] ?? "BTC,ETH";
+            await setTrackedAssetsByTelegramUserId(
+              env.DB,
+              String(telegramUserId),
+              preference,
+            );
+
+            const user = await getUserByTelegramUserId(env.DB, String(telegramUserId));
+            if (!user) {
+              return null;
+            }
+
+            const userState = await getUserStateBundleByUserId(env.DB, user.id);
+            if (!userState) {
+              return null;
+            }
+
+            const readiness = assessReadiness(userState);
+            return {
+              trackedAssets: readiness.trackedAssets,
+              hasCashRecord: readiness.hasCashRecord,
+              trackedPositionAssets: readiness.readyPositionAssets,
+              isReady: readiness.isReady,
+              missingNextSteps: readiness.missingItems,
+            };
           },
         },
         statusProvider: {
@@ -220,3 +273,4 @@ function inferTelegramAlertReason(
 
   return "SETUP_INCOMPLETE";
 }
+

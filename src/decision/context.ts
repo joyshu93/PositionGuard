@@ -5,6 +5,7 @@ import type {
   SupportedAsset,
   UserStateBundle,
 } from "../domain/types.js";
+import { assessReadiness, isTrackedAsset } from "../readiness.js";
 
 export interface BuildDecisionContextParams {
   userState: UserStateBundle;
@@ -17,23 +18,12 @@ export function buildDecisionContext(
   params: BuildDecisionContextParams,
 ): DecisionContext {
   const generatedAt = params.generatedAt ?? new Date().toISOString();
+  const readiness = assessReadiness(params.userState);
   const positionState: PositionState | null =
-    params.userState.positions[params.asset] ?? null;
+    isTrackedAsset(readiness.trackedAssets, params.asset)
+      ? (params.userState.positions[params.asset] ?? null)
+      : null;
   const accountState = params.userState.accountState;
-  const hasAccountState = accountState !== null;
-  const hasBtcPosition = params.userState.positions.BTC !== undefined;
-  const hasEthPosition = params.userState.positions.ETH !== undefined;
-  const hasPositionState = positionState !== null;
-  const missingItems: string[] = [];
-  if (!hasAccountState) {
-    missingItems.push("cash");
-  }
-  if (!hasBtcPosition) {
-    missingItems.push("BTC position");
-  }
-  if (!hasEthPosition) {
-    missingItems.push("ETH position");
-  }
 
   return {
     user: {
@@ -42,14 +32,16 @@ export function buildDecisionContext(
       telegramChatId: params.userState.user.telegramChatId,
       username: params.userState.user.username,
       displayName: params.userState.user.displayName,
+      trackedAssets: params.userState.user.trackedAssets,
       sleepModeEnabled: params.userState.user.sleepModeEnabled,
       onboardingComplete: params.userState.user.onboardingComplete,
     },
     setup: {
-      hasAccountState,
-      hasPositionState,
-      isComplete: hasAccountState && hasBtcPosition && hasEthPosition,
-      missingItems,
+      trackedAssets: readiness.trackedAssets,
+      hasAccountState: readiness.hasCashRecord,
+      readyPositionAssets: readiness.readyPositionAssets,
+      isReady: readiness.isReady,
+      missingItems: readiness.missingItems,
     },
     accountState,
     positionState,

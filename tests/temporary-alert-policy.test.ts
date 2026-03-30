@@ -10,6 +10,7 @@ const baseUserState: UserStateBundle = {
     telegramChatId: "456",
     username: "tester",
     displayName: "Test User",
+    trackedAssets: "BTC,ETH",
     sleepModeEnabled: false,
     onboardingComplete: false,
     createdAt: "2026-01-01T00:00:00.000Z",

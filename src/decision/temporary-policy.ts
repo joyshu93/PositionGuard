@@ -35,7 +35,7 @@ export function applyTemporaryAlertPolicy(
         cooldownKey: `setup:${input.context.user.id}`,
         message: [
           `Action needed: complete manual setup for ${input.context.setup.missingItems.join(", ")}.`,
-          "Use /setcash and /setposition to update your record.",
+          "Use tracked assets, /setcash, and /setposition to update your record.",
           "No trade was executed.",
         ].join("\n"),
       },

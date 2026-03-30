@@ -127,7 +127,7 @@ The repository now implements a temporary alert contract for explicit `ACTION_NE
 Current debug surface:
 
 - `/lastalert` shows the most recent recorded alert snapshot for the current user
-- `/status` includes sleep mode, setup completeness, and recent alert summaries when available
+- `/status` includes tracked assets, sleep mode, setup readiness, missing next steps, and recent alert summaries when available
 
 This is still not a final decision engine, and it is not an execution path.
 
@@ -145,6 +145,7 @@ Planned bot commands:
 - `/start`
 - `/help`
 - `/status`
+- `/track`
 - `/setcash`
 - `/setposition`
 - `/lastalert`
@@ -155,13 +156,29 @@ Current behavior:
 
 - `/start` explains the product boundary
 - `/help` shows supported commands
+- `/track <BTC|ETH|BOTH>` records which spot assets the user wants PositionGuard to track
+- inline callback buttons let the user choose tracked assets, inspect setup progress, record cash, and open spot-record shortcuts
 - `/status` reads stored user-reported state
+- `/status` marks readiness complete only when cash plus the selected tracked asset records are present
 - `/setcash <amount>` records available cash only
 - `/setposition <BTC|ETH> <quantity> <average-entry-price>` records BTC/ETH spot state only
 - `/sleep on` and `/sleep off` toggle alert quiet mode
 - `/lastalert` inspects the most recent recorded alert snapshot
+- inline callback buttons can refresh status or toggle sleep mode
 
 Any future buy/sell-related command must be record-only and must not execute trades.
+
+## Readiness Model
+
+Setup readiness is now based on the user's chosen tracked assets instead of always requiring both BTC and ETH:
+
+- tracked assets may be `BTC`, `ETH`, or both
+- existing users fall back conservatively to tracking both assets until they choose otherwise
+- readiness requires a cash record plus position records for the chosen tracked assets only
+- a tracked position record may be an empty spot record with quantity `0` and average entry `0`
+- `/status`, onboarding progress, and setup-related `ACTION_NEEDED` alerts all use the same tracked-asset readiness logic
+
+This remains a manual record system. It does not sync balances or execute orders.
 
 ## Current Limitations
 
@@ -173,10 +190,11 @@ Any future buy/sell-related command must be record-only and must not execute tra
 - No LLM-based judgment in this stage
 - No support for markets beyond BTC and ETH spot
 - No broad notification engine; only the temporary `ACTION_NEEDED` contract is implemented for narrow alerting and cooldown-based suppression
+- Onboarding is intentionally lightweight; inline buttons guide setup, but cash and position values are still entered with commands
 
 ## Roadmap
 
-1. Add optional inline-assisted input helpers for cash and position recording.
+1. Add optional richer onboarding shortcuts beyond the current lightweight inline guidance.
 2. Refine cooldown windows and notification inspection now that basic `ACTION_NEEDED` delivery exists.
 3. Add richer public market structure summaries for `1h`, `4h`, and `1d`.
 4. Expose recent decision-log inspection for operational debugging.
