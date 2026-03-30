@@ -23,11 +23,11 @@ This repository is intentionally in an MVP scaffold stage. The current goal is t
 
 ## Architecture
 
-- `src/index.ts` is intended to host the Worker entrypoint.
+- `src/index.ts` hosts the Worker entrypoint, webhook wiring, and scheduled trigger integration.
 - `src/upbit.ts` contains public Upbit quotation and candle normalization.
-- `src/telegram.ts` is intended to own Telegram webhook parsing and routing.
-- `src/db/*` is intended to own D1 persistence.
-- `src/decision/*` is intended to own decision contracts and the stub engine.
+- `src/telegram.ts` owns Telegram webhook parsing and routing.
+- `src/db/*` owns D1 persistence and operator-visibility queries.
+- `src/decision/*` owns decision contracts, readiness-aware context assembly, and the stub engine.
 - `migrations/` holds D1 schema migrations.
 
 The design is modular monolith by intent: adapters are isolated, domain types stay pure, and the future decision engine can be swapped in without rewiring the whole project.
@@ -73,13 +73,15 @@ For remote databases:
 wrangler d1 migrations apply position-guard --remote
 ```
 
-The initial migration creates:
+The migration history now covers:
 
 - `users`
 - `account_state`
 - `position_state`
 - `decision_logs`
 - `notification_events`
+- schema guards for non-negative cash and position values
+- tracked-asset preference persistence for `BTC`, `ETH`, or both
 
 ## Webhook Setup
 
@@ -110,6 +112,8 @@ The hourly decision scaffold is intended to run from a Cloudflare scheduled trig
 - assemble decision context
 - run the stub decision engine
 - persist a decision log
+- evaluate the temporary `ACTION_NEEDED` policy
+- record sent or skipped notification events when that policy applies
 
 The current stage should remain conservative and avoid noisy alerts.
 
@@ -124,12 +128,12 @@ The repository now implements a temporary alert contract for explicit `ACTION_NE
 - prefer silence over low-confidence or noisy notifications
 - keep alert text short and record-oriented, and never imply trade execution
 
-Current debug surface:
+Current operator visibility surface:
 
-- `/lastalert` shows the most recent recorded alert snapshot for the current user
+- `/lastalert` shows the most recent sent `ACTION_NEEDED` alert snapshot for the current user
 - `/status` includes tracked assets, sleep mode, setup readiness, missing next steps, and recent alert summaries when available
-- `/lastdecision` shows the most recent hourly decision for the user
-- `/hourlyhealth` shows a compact recent hourly health summary for the user
+- `/lastdecision` shows the most recent hourly decision plus whether the alert was sent, skipped, or not applicable
+- `/hourlyhealth` shows a compact recent hourly health summary including market-data failures and suppression counts
 
 This is still not a final decision engine, and it is not an execution path.
 
@@ -142,7 +146,7 @@ crons = ["0 * * * *"]
 
 ## Commands
 
-Planned bot commands:
+Supported bot commands:
 
 - `/start`
 - `/help`
@@ -161,7 +165,7 @@ Current behavior:
 - `/start` explains the product boundary
 - `/help` shows supported commands
 - `/track <BTC|ETH|BOTH>` records which spot assets the user wants PositionGuard to track
-- inline callback buttons let the user choose tracked assets, inspect setup progress, record cash, and open spot-record shortcuts
+- inline callback buttons let the user choose tracked assets, inspect setup progress, record cash, open BTC/ETH spot-record shortcuts, refresh `/status`, and open `/lastdecision` and `/hourlyhealth`
 - `/status` reads stored user-reported state
 - `/status` marks readiness complete only when cash plus the selected tracked asset records are present
 - `/setcash <amount>` records available cash only
@@ -169,8 +173,7 @@ Current behavior:
 - `/lastdecision` inspects the latest hourly decision status, summary, time, and alert outcome
 - `/hourlyhealth` inspects recent hourly processing health such as market-data failures, cooldown skips, sleep suppressions, and setup blocks
 - `/sleep on` and `/sleep off` toggle alert quiet mode
-- `/lastalert` inspects the most recent recorded alert snapshot
-- inline callback buttons can refresh status or toggle sleep mode
+- `/lastalert` inspects the most recent sent `ACTION_NEEDED` alert snapshot and its cooldown window
 
 Any future buy/sell-related command must be record-only and must not execute trades.
 
@@ -182,7 +185,7 @@ Setup readiness is now based on the user's chosen tracked assets instead of alwa
 - existing users fall back conservatively to tracking both assets until they choose otherwise
 - readiness requires a cash record plus position records for the chosen tracked assets only
 - a tracked position record may be an empty spot record with quantity `0` and average entry `0`
-- `/status`, onboarding progress, and setup-related `ACTION_NEEDED` alerts all use the same tracked-asset readiness logic
+- `/status`, inline onboarding progress, and setup-related `ACTION_NEEDED` alerts all use the same tracked-asset readiness logic
 
 This remains a manual record system. It does not sync balances or execute orders.
 
@@ -197,6 +200,7 @@ This remains a manual record system. It does not sync balances or execute orders
 - No support for markets beyond BTC and ETH spot
 - No broad notification engine; only the temporary `ACTION_NEEDED` contract is implemented for narrow alerting and cooldown-based suppression
 - Onboarding is intentionally lightweight; inline buttons guide setup, but cash and position values are still entered with commands
+- `/lastalert`, `/lastdecision`, and `/hourlyhealth` are user-scoped inspection tools, not a global admin console
 
 ## Roadmap
 

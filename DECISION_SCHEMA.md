@@ -24,8 +24,10 @@ At this stage, the repository must not implement:
 3. Normalize data into internal domain types.
 4. Assemble a decision context.
 5. Run a stub decision engine.
-6. Store a structured decision log.
-7. Optionally produce conservative `ACTION_NEEDED` notifications for explicit operational cases, with throttling and sleep-mode suppression.
+6. Apply the temporary `ACTION_NEEDED` policy for explicit operational cases only.
+7. Evaluate notification delivery with cooldown, sleep-mode, and chat-id suppression.
+8. Store a structured decision log with hourly diagnostics.
+9. Store a notification event only when an `ACTION_NEEDED` evaluation produces a sent or recorded skipped outcome.
 
 ## Decision Input Shape
 The future decision engine should receive a context object with these categories:
@@ -91,7 +93,8 @@ Notification behavior under this contract should remain conservative:
 Operator visibility should stay read-only and concise:
 - `/lastdecision` should summarize the latest decision status, summary, created time, and alert outcome
 - `/hourlyhealth` should summarize cooldown skips, sleep suppression, setup blocks, and repeated market-data failures
-- neither surface should imply trade execution or discretionary authority
+- `/lastalert` should summarize the most recent sent `ACTION_NEEDED` alert snapshot and cooldown window
+- none of these surfaces should imply trade execution or discretionary authority
 
 Current MVP readiness semantics are:
 - tracked assets default conservatively to BTC and ETH for users who have not chosen yet
@@ -99,14 +102,17 @@ Current MVP readiness semantics are:
 - users are not required to configure both BTC and ETH if they only intend to track one
 
 ## Decision Log Expectations
-Each decision log should capture:
+Each decision log currently captures:
 - user id
 - asset / market
-- input snapshot reference or serialized summary
-- output status
-- output summary
+- output status and summary
 - whether a notification was emitted
 - timestamps
+- serialized context that includes hourly diagnostics for:
+  - readiness completeness and missing items
+  - market-data availability and consecutive failure count
+  - base decision status versus final decision status
+  - notification eligibility, sent/skipped outcome, suppression reason, cooldown key, and cooldown window
 
 ## Design Constraints
 - Keep domain types explicit and serializable.
