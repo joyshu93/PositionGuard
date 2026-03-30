@@ -9,11 +9,13 @@ import {
   ensureTelegramUser,
   getTelegramStatusSnapshot,
   getUserStateBundleByUserId,
+  listRecentNotificationEventSummaries,
   setCashByTelegramUserId,
   setPositionByTelegramUserId,
   setSleepModeByTelegramUserId,
 } from "./db/repositories.js";
 import { renderStatusMessage } from "./status.js";
+import type { TelegramActionNeededReason } from "./telegram.js";
 
 const jsonHeaders = {
   "content-type": "application/json; charset=utf-8",
@@ -123,8 +125,72 @@ async function handleFetch(
               env.DB,
               statusSnapshot.user.id,
             );
+            const recentNotifications = await listRecentNotificationEventSummaries(
+              env.DB,
+              statusSnapshot.user.id,
+              3,
+            );
 
-            return renderStatusMessage(userState);
+            return renderStatusMessage(
+              userState,
+              recentNotifications.map((event) => ({
+                deliveryStatus: event.deliveryStatus,
+                reasonKey: event.reasonKey,
+                eventType: event.eventType,
+                createdAt: event.createdAt,
+                suppressedBy: event.suppressedBy,
+              })),
+            );
+          },
+        },
+        notificationProvider: {
+          async getLastAlert(telegramUserId) {
+            const statusSnapshot = await getTelegramStatusSnapshot(
+              env.DB,
+              String(telegramUserId),
+            );
+            if (!statusSnapshot) {
+              return null;
+            }
+
+            const recentNotifications = await listRecentNotificationEventSummaries(
+              env.DB,
+              statusSnapshot.user.id,
+              10,
+            );
+            const latestSentAlert = recentNotifications.find(
+              (event) =>
+                event.eventType === "ACTION_NEEDED" &&
+                event.deliveryStatus === "SENT",
+            );
+
+            if (!latestSentAlert) {
+              return null;
+            }
+
+            const payload =
+              latestSentAlert.payload && typeof latestSentAlert.payload === "object"
+                ? latestSentAlert.payload
+                : null;
+            const summary =
+              payload &&
+              typeof (payload as { summary?: unknown }).summary === "string"
+                ? ((payload as { summary: string }).summary)
+                : "ACTION_NEEDED alert sent.";
+            const reason = inferTelegramAlertReason(
+              payload &&
+                typeof (payload as { alertReason?: unknown }).alertReason === "string"
+                ? ((payload as { alertReason: string }).alertReason)
+                : null,
+            );
+
+            return {
+              reason,
+              summary,
+              asset: latestSentAlert.asset,
+              sentAt: latestSentAlert.sentAt ?? latestSentAlert.createdAt,
+              cooldownUntil: latestSentAlert.cooldownUntil,
+            };
           },
         },
       },
@@ -139,4 +205,18 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: jsonHeaders,
   });
+}
+
+function inferTelegramAlertReason(
+  alertReason: string | null,
+): TelegramActionNeededReason {
+  if (alertReason === "MARKET_DATA_UNAVAILABLE") {
+    return "MISSING_MARKET_DATA";
+  }
+
+  if (alertReason === "INVALID_RECORDED_STATE") {
+    return "INVALID_STORED_STATE";
+  }
+
+  return "SETUP_INCOMPLETE";
 }

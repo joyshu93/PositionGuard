@@ -46,6 +46,45 @@ assert(
   "setposition should persist the manual position state.",
 );
 
+const alertActions = await routeCommand(
+  {
+    ...baseContext,
+    command: "lastalert",
+    args: [],
+    text: "/lastalert",
+  },
+  {
+    ...deps,
+    notificationProvider: {
+      async getLastAlert() {
+        return {
+          reason: "SETUP_INCOMPLETE",
+          summary: "Manual setup is incomplete; waiting for user-reported inputs.",
+          asset: null,
+          sentAt: "2026-01-01T03:00:00.000Z",
+          cooldownUntil: "2026-01-01T09:00:00.000Z",
+        };
+      },
+    },
+  },
+);
+
+assertEqual(
+  alertActions[0]?.kind,
+  "sendMessage",
+  "/lastalert should return a Telegram message when an alert snapshot exists.",
+);
+const alertAction = alertActions[0];
+let alertText = "";
+if (alertAction && alertAction.kind === "sendMessage") {
+  alertText = alertAction.text;
+}
+
+assert(
+  alertText.includes("Cooldown until: 2026-01-01T09:00:00.000Z"),
+  "/lastalert should expose cooldown visibility for debugging.",
+);
+
 const invalidActions = await routeCommand(
   {
     ...baseContext,
@@ -55,8 +94,14 @@ const invalidActions = await routeCommand(
   deps,
 );
 
+const invalidAction = invalidActions[0];
+let invalidActionText = "";
+if (invalidAction && invalidAction.kind === "sendMessage") {
+  invalidActionText = invalidAction.text;
+}
+
 assert(
-  invalidActions[0]?.kind === "sendMessage" &&
-    invalidActions[0].text.includes("Average entry price must be 0 when quantity is 0."),
+  invalidAction?.kind === "sendMessage" &&
+    invalidActionText.includes("Average entry price must be 0 when quantity is 0."),
   "Invalid setposition input should return a Telegram-friendly validation error.",
 );

@@ -11,7 +11,11 @@ type DecisionLogRow = {
   user_id: number;
   asset: "BTC" | "ETH";
   symbol: "KRW-BTC" | "KRW-ETH";
-  decision_status: "SETUP_INCOMPLETE" | "INSUFFICIENT_DATA" | "NO_ACTION";
+  decision_status:
+    | "SETUP_INCOMPLETE"
+    | "INSUFFICIENT_DATA"
+    | "NO_ACTION"
+    | "ACTION_NEEDED";
   summary: string;
   reasons_json: string | null;
   actionable: number;
@@ -89,6 +93,26 @@ export const listDecisionLogsForUser = async (
   return result.results.map(mapDecisionLogRow);
 };
 
+export const listRecentDecisionLogsForUserAsset = async (
+  db: D1DatabaseLike,
+  userId: number,
+  asset: "BTC" | "ETH",
+  limit = 10,
+): Promise<DecisionLogRecord[]> => {
+  const result = await db
+    .prepare(
+      `SELECT id, user_id, asset, symbol, decision_status, summary, reasons_json, actionable, notification_emitted, context_json, created_at
+       FROM decision_logs
+       WHERE user_id = ? AND asset = ?
+       ORDER BY created_at DESC
+       LIMIT ?`,
+    )
+    .bind(userId, asset, limit)
+    .all<DecisionLogRow>();
+
+  return result.results.map(mapDecisionLogRow);
+};
+
 export const getLatestDecisionLogForUserAsset = async (
   db: D1DatabaseLike,
   userId: number,
@@ -106,7 +130,11 @@ export const getLatestDecisionLogForUserAsset = async (
     .first<{
       user_id: number;
       asset: "BTC" | "ETH";
-      decision_status: "SETUP_INCOMPLETE" | "INSUFFICIENT_DATA" | "NO_ACTION";
+      decision_status:
+        | "SETUP_INCOMPLETE"
+        | "INSUFFICIENT_DATA"
+        | "NO_ACTION"
+        | "ACTION_NEEDED";
       summary: string;
       created_at: string;
     }>();

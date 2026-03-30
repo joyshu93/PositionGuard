@@ -5,6 +5,7 @@ import type { TelegramOutgoingAction, TelegramRouterDependencies, TelegramUpdate
 
 export { createTelegramBotClient, executeTelegramActions } from './telegram/client.js';
 export type {
+  TelegramActionNeededReason,
   TelegramCallbackQuery,
   TelegramChat,
   TelegramCommandContext,
@@ -12,6 +13,8 @@ export type {
   TelegramOutgoingAction,
   TelegramReplyMarkup,
   TelegramRouterDependencies,
+  TelegramNotificationProvider,
+  TelegramNotificationSnapshot,
   TelegramStateStore,
   TelegramStatusProvider,
   TelegramUpdate,
@@ -20,6 +23,10 @@ export type {
   TelegramWebhookContext,
   TelegramWebhookEnv,
 } from './telegram/types.js';
+export {
+  buildActionNeededAlertActions,
+  buildActionNeededAlertText,
+} from './telegram/commands.js';
 
 export async function handleTelegramWebhook(request: Request, ctx: TelegramWebhookContext): Promise<Response> {
   if (request.method !== 'POST') {

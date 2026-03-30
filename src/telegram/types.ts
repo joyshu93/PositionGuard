@@ -57,6 +57,11 @@ export interface TelegramUserStateSnapshot {
   cash: number | null;
 }
 
+export type TelegramActionNeededReason =
+  | "SETUP_INCOMPLETE"
+  | "MISSING_MARKET_DATA"
+  | "INVALID_STORED_STATE";
+
 export interface TelegramUserProfile {
   telegramUserId: number;
   telegramChatId: number;
@@ -81,9 +86,22 @@ export interface TelegramStatusProvider {
   getStatus(telegramUserId: number): Promise<string>;
 }
 
+export interface TelegramNotificationSnapshot {
+  reason: TelegramActionNeededReason;
+  summary: string;
+  asset: "BTC" | "ETH" | null;
+  sentAt: string;
+  cooldownUntil: string | null;
+}
+
+export interface TelegramNotificationProvider {
+  getLastAlert(telegramUserId: number): Promise<TelegramNotificationSnapshot | null>;
+}
+
 export interface TelegramRouterDependencies {
   stateStore?: TelegramStateStore;
   statusProvider?: TelegramStatusProvider;
+  notificationProvider?: TelegramNotificationProvider;
 }
 
 export interface TelegramWebhookContext {

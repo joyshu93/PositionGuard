@@ -34,6 +34,16 @@ const userState: UserStateBundle = {
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
     },
+    ETH: {
+      id: 21,
+      userId: 1,
+      asset: "ETH",
+      quantity: 1.5,
+      averageEntryPrice: 3500000,
+      reportedAt: "2026-01-01T00:00:00.000Z",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    },
   },
 };
 
@@ -70,6 +80,12 @@ assertEqual(
   completeContext.marketSnapshot?.market ?? null,
   "KRW-BTC",
   "Decision context should include the market snapshot.",
+);
+
+assertEqual(
+  completeContext.setup.missingItems.length,
+  0,
+  "Decision context should not report missing items for complete setup.",
 );
 
 const incompleteContext = buildDecisionContext({

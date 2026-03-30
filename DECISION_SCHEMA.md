@@ -9,6 +9,7 @@ At this stage, the repository may implement:
 - decision-context assembly
 - placeholder readiness checks
 - conservative stub statuses
+- a temporary `ACTION_NEEDED` alert contract for explicit operational cases only
 - persistence for decision logs
 
 At this stage, the repository must not implement:
@@ -24,7 +25,7 @@ At this stage, the repository must not implement:
 4. Assemble a decision context.
 5. Run a stub decision engine.
 6. Store a structured decision log.
-7. Optionally produce conservative notifications later, with throttling.
+7. Optionally produce conservative `ACTION_NEEDED` notifications for explicit operational cases, with throttling and sleep-mode suppression.
 
 ## Decision Input Shape
 The future decision engine should receive a context object with these categories:
@@ -69,8 +70,22 @@ Allowed MVP statuses:
 - `SETUP_INCOMPLETE`
 - `INSUFFICIENT_DATA`
 - `NO_ACTION`
+- `ACTION_NEEDED`
 
 Future statuses may later include scenario or management categories, but they should not be added until real strategy logic exists.
+
+## Temporary Alert Policy
+`ACTION_NEEDED` is intentionally narrow and temporary. It should only be used for explicit, inspectable cases such as:
+- incomplete user setup that requires manual cash or position input
+- repeated public market snapshot failure for an existing position after several consecutive hourly failures
+- clearly contradictory stored state that the user must correct
+
+Notification behavior under this contract should remain conservative:
+- prefer silence over repeated or low-confidence alerts
+- suppress duplicate alerts for the same user, asset, and reason within a cooldown window
+- respect sleep mode strictly
+- keep message text short, concrete, and record-oriented
+- expose recent alert state through lightweight debug inspection, such as `/lastalert`
 
 ## Decision Log Expectations
 Each decision log should capture:

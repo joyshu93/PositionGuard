@@ -1,5 +1,13 @@
 import type { PositionState, UserStateBundle } from "./domain/types.js";
 
+export interface RecentNotificationSummary {
+  deliveryStatus: "SENT" | "SKIPPED";
+  reasonKey: string | null;
+  eventType: string;
+  createdAt: string;
+  suppressedBy?: string | null;
+}
+
 export interface SetupCompleteness {
   hasCash: boolean;
   hasBtcPosition: boolean;
@@ -22,7 +30,10 @@ export function assessSetupCompleteness(
   };
 }
 
-export function renderStatusMessage(userState: UserStateBundle | null): string {
+export function renderStatusMessage(
+  userState: UserStateBundle | null,
+  recentNotifications: RecentNotificationSummary[] = [],
+): string {
   if (!userState) {
     return [
       "No stored setup yet.",
@@ -45,6 +56,7 @@ export function renderStatusMessage(userState: UserStateBundle | null): string {
     `BTC spot record: ${formatPosition(userState.positions.BTC)}`,
     `ETH spot record: ${formatPosition(userState.positions.ETH)}`,
     `Missing setup items: ${formatMissingItems(completeness)}`,
+    ...formatRecentNotifications(recentNotifications),
     "State is record-only. No trade execution is performed.",
   ].join("\n");
 }
@@ -78,4 +90,23 @@ function formatNumber(value: number): string {
   return new Intl.NumberFormat("en-US", {
     maximumFractionDigits: 8,
   }).format(value);
+}
+
+function formatRecentNotifications(
+  recentNotifications: RecentNotificationSummary[],
+): string[] {
+  if (recentNotifications.length === 0) {
+    return ["Recent alerts: none"];
+  }
+
+  return [
+    "Recent alerts:",
+    ...recentNotifications.map((notification) => {
+      const reason = notification.reasonKey ?? "unclassified";
+      const extra = notification.suppressedBy
+        ? ` (${notification.suppressedBy})`
+        : "";
+      return `- ${notification.deliveryStatus} ${reason}${extra}`;
+    }),
+  ];
 }

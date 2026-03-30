@@ -82,6 +82,7 @@ export interface DecisionContext {
     hasAccountState: boolean;
     hasPositionState: boolean;
     isComplete: boolean;
+    missingItems: string[];
   };
   accountState: AccountState | null;
   positionState: PositionState | null;
@@ -92,7 +93,19 @@ export interface DecisionContext {
 export type DecisionStatus =
   | "SETUP_INCOMPLETE"
   | "INSUFFICIENT_DATA"
-  | "NO_ACTION";
+  | "NO_ACTION"
+  | "ACTION_NEEDED";
+
+export type ActionNeededReason =
+  | "COMPLETE_SETUP"
+  | "INVALID_RECORDED_STATE"
+  | "MARKET_DATA_UNAVAILABLE";
+
+export interface ActionNeededAlert {
+  reason: ActionNeededReason;
+  cooldownKey: string;
+  message: string;
+}
 
 export interface DecisionResult {
   status: DecisionStatus;
@@ -101,6 +114,7 @@ export interface DecisionResult {
   actionable: boolean;
   symbol: SupportedMarket | null;
   generatedAt: string;
+  alert: ActionNeededAlert | null;
 }
 
 export interface DecisionLogRecord {

@@ -56,7 +56,12 @@ export interface PositionStateInput {
   reportedAt?: string;
 }
 
-export type DecisionStatus = "SETUP_INCOMPLETE" | "INSUFFICIENT_DATA" | "NO_ACTION";
+export type DecisionStatus =
+  | "SETUP_INCOMPLETE"
+  | "INSUFFICIENT_DATA"
+  | "NO_ACTION"
+  | "ACTION_NEEDED";
+export type NotificationDeliveryStatus = "SENT" | "SKIPPED";
 
 export interface DecisionLogInput {
   userId: number;
@@ -88,20 +93,42 @@ export interface DecisionLogRecord {
 export interface NotificationEventInput {
   userId: number;
   decisionLogId?: number | null;
+  asset?: AssetSymbol | null;
+  reasonKey?: string | null;
+  deliveryStatus?: NotificationDeliveryStatus;
   eventType: string;
   channel?: string;
   payload?: unknown;
   sentAt?: string | null;
+  cooldownUntil?: string | null;
+  suppressedBy?: string | null;
 }
 
 export interface NotificationEventRecord {
   id: number;
   userId: number;
   decisionLogId: number | null;
+  asset: AssetSymbol | null;
+  reasonKey: string | null;
+  deliveryStatus: NotificationDeliveryStatus;
   eventType: string;
   channel: string;
   payload: unknown;
   sentAt: string | null;
+  cooldownUntil: string | null;
+  suppressedBy: string | null;
+  createdAt: string;
+}
+
+export interface NotificationEventLookup {
+  id: number;
+  userId: number;
+  asset: AssetSymbol | null;
+  reasonKey: string | null;
+  deliveryStatus: NotificationDeliveryStatus;
+  eventType: string;
+  sentAt: string | null;
+  cooldownUntil: string | null;
   createdAt: string;
 }
 

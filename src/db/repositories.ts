@@ -20,7 +20,13 @@ import type { D1DatabaseLike } from "./db.js";
 import {
   createDecisionLog,
   getLatestDecisionLogForUserAsset,
+  listRecentDecisionLogsForUserAsset,
 } from "./decision-logs.js";
+import {
+  createNotificationEvent,
+  getLatestNotificationEventForUserAssetReason,
+  listRecentNotificationEventsForUser,
+} from "./notification-events.js";
 import {
   loadUserStateSnapshotByTelegramId,
   loadUserStateSnapshotByUserId,
@@ -51,6 +57,20 @@ export interface RecordDecisionLogParams {
   actionable: boolean;
   contextJson: string;
   notificationSent: boolean;
+}
+
+export interface RecordNotificationEventParams {
+  userId: number;
+  decisionLogId?: number | null;
+  asset?: SupportedAsset | null;
+  reasonKey?: string | null;
+  deliveryStatus?: "SENT" | "SKIPPED";
+  eventType: string;
+  channel?: string;
+  payload?: unknown;
+  sentAt?: string | null;
+  cooldownUntil?: string | null;
+  suppressedBy?: string | null;
 }
 
 export interface TelegramStatusSnapshot {
@@ -188,6 +208,39 @@ export async function getLatestDecisionLogSummary(
   asset: SupportedAsset,
 ): Promise<DecisionLogLookup | null> {
   return getLatestDecisionLogForUserAsset(db, userId, asset);
+}
+
+export async function listRecentDecisionLogSummaries(
+  db: D1DatabaseLike,
+  userId: number,
+  asset: SupportedAsset,
+  limit = 10,
+) {
+  return listRecentDecisionLogsForUserAsset(db, userId, asset, limit);
+}
+
+export async function recordNotificationEvent(
+  db: D1DatabaseLike,
+  params: RecordNotificationEventParams,
+) {
+  return createNotificationEvent(db, params);
+}
+
+export async function getLatestNotificationEventSummary(
+  db: D1DatabaseLike,
+  userId: number,
+  asset: SupportedAsset | null,
+  reasonKey: string,
+) {
+  return getLatestNotificationEventForUserAssetReason(db, userId, asset, reasonKey);
+}
+
+export async function listRecentNotificationEventSummaries(
+  db: D1DatabaseLike,
+  userId: number,
+  limit = 25,
+) {
+  return listRecentNotificationEventsForUser(db, userId, limit);
 }
 
 export async function getUserByTelegramUserId(

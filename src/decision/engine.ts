@@ -4,14 +4,15 @@ export function runDecisionEngine(context: DecisionContext): DecisionResult {
   if (!context.setup.isComplete) {
     return {
       status: "SETUP_INCOMPLETE",
-      summary: "User setup is incomplete; waiting for manual state input.",
+      summary: "Manual setup is incomplete; waiting for user-reported inputs.",
       reasons: [
-        "Available cash has not been fully recorded or position state is missing.",
-        "The stub engine does not infer missing state.",
+        `Missing setup items: ${context.setup.missingItems.join(", ")}.`,
+        "PositionGuard only works from user-reported state.",
       ],
       actionable: false,
-      symbol: context.marketSnapshot?.market ?? null,
+      symbol: context.marketSnapshot?.market ?? getFallbackMarket(context),
       generatedAt: context.generatedAt,
+      alert: null,
     };
   }
 
@@ -24,8 +25,9 @@ export function runDecisionEngine(context: DecisionContext): DecisionResult {
         "No fallback strategy logic is enabled in the MVP.",
       ],
       actionable: false,
-      symbol: null,
+      symbol: getFallbackMarket(context),
       generatedAt: context.generatedAt,
+      alert: null,
     };
   }
 
@@ -39,5 +41,16 @@ export function runDecisionEngine(context: DecisionContext): DecisionResult {
     actionable: false,
     symbol: context.marketSnapshot.market,
     generatedAt: context.generatedAt,
+    alert: null,
   };
+}
+
+function getFallbackMarket(context: DecisionContext) {
+  if (context.positionState?.asset === "BTC") {
+    return "KRW-BTC" as const;
+  }
+  if (context.positionState?.asset === "ETH") {
+    return "KRW-ETH" as const;
+  }
+  return null;
 }

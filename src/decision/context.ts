@@ -21,7 +21,19 @@ export function buildDecisionContext(
     params.userState.positions[params.asset] ?? null;
   const accountState = params.userState.accountState;
   const hasAccountState = accountState !== null;
+  const hasBtcPosition = params.userState.positions.BTC !== undefined;
+  const hasEthPosition = params.userState.positions.ETH !== undefined;
   const hasPositionState = positionState !== null;
+  const missingItems: string[] = [];
+  if (!hasAccountState) {
+    missingItems.push("cash");
+  }
+  if (!hasBtcPosition) {
+    missingItems.push("BTC position");
+  }
+  if (!hasEthPosition) {
+    missingItems.push("ETH position");
+  }
 
   return {
     user: {
@@ -36,7 +48,8 @@ export function buildDecisionContext(
     setup: {
       hasAccountState,
       hasPositionState,
-      isComplete: hasAccountState && hasPositionState,
+      isComplete: hasAccountState && hasBtcPosition && hasEthPosition,
+      missingItems,
     },
     accountState,
     positionState,

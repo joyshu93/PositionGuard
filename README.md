@@ -113,6 +113,24 @@ The hourly decision scaffold is intended to run from a Cloudflare scheduled trig
 
 The current stage should remain conservative and avoid noisy alerts.
 
+## Temporary Alert Policy
+
+The repository now implements a temporary alert contract for explicit `ACTION_NEEDED` cases. That policy is intentionally narrow and should stay conservative:
+
+- alert only when the user needs a clear manual correction or setup completion
+- alert for repeated public market snapshot failures only after several consecutive hourly failures for an existing recorded position
+- suppress repeated alerts for the same reason within a cooldown window
+- respect sleep mode strictly
+- prefer silence over low-confidence or noisy notifications
+- keep alert text short and record-oriented, and never imply trade execution
+
+Current debug surface:
+
+- `/lastalert` shows the most recent recorded alert snapshot for the current user
+- `/status` includes sleep mode, setup completeness, and recent alert summaries when available
+
+This is still not a final decision engine, and it is not an execution path.
+
 The default schedule in `wrangler.toml` is hourly:
 
 ```toml
@@ -129,6 +147,7 @@ Planned bot commands:
 - `/status`
 - `/setcash`
 - `/setposition`
+- `/lastalert`
 - `/sleep on`
 - `/sleep off`
 
@@ -140,6 +159,7 @@ Current behavior:
 - `/setcash <amount>` records available cash only
 - `/setposition <BTC|ETH> <quantity> <average-entry-price>` records BTC/ETH spot state only
 - `/sleep on` and `/sleep off` toggle alert quiet mode
+- `/lastalert` inspects the most recent recorded alert snapshot
 
 Any future buy/sell-related command must be record-only and must not execute trades.
 
@@ -152,12 +172,12 @@ Any future buy/sell-related command must be record-only and must not execute tra
 - No final decision engine yet
 - No LLM-based judgment in this stage
 - No support for markets beyond BTC and ETH spot
-- No notification sending logic yet, even though sleep mode and notification safety scaffolding exist
+- No broad notification engine; only the temporary `ACTION_NEEDED` contract is implemented for narrow alerting and cooldown-based suppression
 
 ## Roadmap
 
 1. Add optional inline-assisted input helpers for cash and position recording.
-2. Persist last-notified timestamps or cooldown metadata in `notification_events`.
+2. Refine cooldown windows and notification inspection now that basic `ACTION_NEEDED` delivery exists.
 3. Add richer public market structure summaries for `1h`, `4h`, and `1d`.
 4. Expose recent decision-log inspection for operational debugging.
 5. Replace the stub decision engine with a real scenario-based engine later.

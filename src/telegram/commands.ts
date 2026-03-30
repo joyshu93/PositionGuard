@@ -1,4 +1,11 @@
-import type { TelegramCommandContext, TelegramOutgoingAction, TelegramReplyMarkup, TelegramRouterDependencies, TelegramUserStateSnapshot } from './types.js';
+import type {
+  TelegramActionNeededReason,
+  TelegramCommandContext,
+  TelegramOutgoingAction,
+  TelegramReplyMarkup,
+  TelegramRouterDependencies,
+  TelegramUserStateSnapshot,
+} from './types.js';
 import { formatValidationErrors, validatePositionInput } from '../validation.js';
 import { parseCashAmount, parsePositionArgs, parseSleepModeArg, parseTelegramCallbackAction } from './parser.js';
 
@@ -21,6 +28,8 @@ export function routeCommand(context: TelegramCommandContext, deps: TelegramRout
       return Promise.resolve(bootstrap).then(() => handleSetCash(context, deps));
     case 'setposition':
       return Promise.resolve(bootstrap).then(() => handleSetPosition(context, deps));
+    case 'lastalert':
+      return Promise.resolve(bootstrap).then(() => handleLastAlert(context, deps));
     case 'sleep':
       return Promise.resolve(bootstrap).then(() => handleSleep(context, deps));
     default:
@@ -139,6 +148,7 @@ function buildHelpText(): string {
     '/status - view stored state summary',
     '/setcash <amount> - record available cash',
     '/setposition <BTC|ETH> <quantity> <average-entry-price> - record spot inventory only',
+    '/lastalert - inspect the last recorded alert state',
     '/sleep on - pause alerts',
     '/sleep off - resume alerts',
     '',
@@ -174,10 +184,82 @@ function formatStatus(state: TelegramUserStateSnapshot | null): string {
   ].join('\n');
 }
 
+async function handleLastAlert(
+  context: TelegramCommandContext,
+  deps: TelegramRouterDependencies,
+): Promise<TelegramOutgoingAction[]> {
+  const snapshot = await deps.notificationProvider?.getLastAlert(context.userId);
+  if (!snapshot) {
+    return [
+      send(
+        context.chatId,
+        'No alert record is available yet. ACTION_NEEDED alerts are only sent when the hourly loop records one.',
+      ),
+    ];
+  }
+
+  return [
+    send(
+      context.chatId,
+      [
+        'Last alert:',
+        `Reason: ${snapshot.reason}`,
+        `Asset: ${snapshot.asset ?? 'n/a'}`,
+        `When: ${snapshot.sentAt}`,
+        `Summary: ${snapshot.summary}`,
+        `Cooldown until: ${snapshot.cooldownUntil ?? 'n/a'}`,
+      ].join('\n'),
+    ),
+  ];
+}
+
 function formatNumber(value: number): string {
   return new Intl.NumberFormat('en-US', {
     maximumFractionDigits: 8,
   }).format(value);
+}
+
+export interface TelegramActionNeededAlertInput {
+  chatId: number;
+  reason: TelegramActionNeededReason;
+  asset: "BTC" | "ETH" | null;
+  summary: string;
+  nextStep: string;
+}
+
+export function buildActionNeededAlertText(
+  input: TelegramActionNeededAlertInput,
+): string {
+  const assetLabel = input.asset ?? 'setup';
+  const headline = formatActionNeededHeadline(input.reason, assetLabel);
+  return [
+    `ACTION NEEDED: ${headline}`,
+    input.summary,
+    input.nextStep,
+    'No trade was executed.',
+    'This is record-only guidance.',
+  ].join('\n');
+}
+
+export function buildActionNeededAlertActions(
+  input: TelegramActionNeededAlertInput,
+): TelegramOutgoingAction[] {
+  return [send(input.chatId, buildActionNeededAlertText(input))];
+}
+
+function formatActionNeededHeadline(
+  reason: TelegramActionNeededReason,
+  assetLabel: string,
+): string {
+  if (reason === 'SETUP_INCOMPLETE') {
+    return `${assetLabel} setup is incomplete`;
+  }
+
+  if (reason === 'MISSING_MARKET_DATA') {
+    return `${assetLabel} market snapshot is unavailable`;
+  }
+
+  return `${assetLabel} stored state needs correction`;
 }
 
 function send(chatId: number, text: string, replyMarkup?: TelegramReplyMarkup): TelegramOutgoingAction {
