@@ -563,13 +563,40 @@ function formatDecisionLine(line: TelegramLastDecisionSnapshot['lines'][number])
   ].join(' | ');
 }
 
+// function formatCompactTimestamp(value: string): string {
+//   const date = new Date(value);
+//   if (Number.isNaN(date.getTime())) {
+//     return value;
+//   }
+
+//   return date.toISOString().replace('.000Z', 'Z');
+// }
+
 function formatCompactTimestamp(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
     return value;
   }
 
-  return date.toISOString().replace('.000Z', 'Z');
+  const formatter = new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+
+  const parts = formatter.formatToParts(date);
+  const map = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+
+  return `${map.year}-${map.month}-${map.day} ${map.hour}:${map.minute}:${map.second} KST`;
 }
 
 function truncateText(value: string, limit: number): string {
