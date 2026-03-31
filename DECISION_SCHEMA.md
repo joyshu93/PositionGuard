@@ -24,7 +24,10 @@ At this stage, the repository must not implement:
 2. Fetch public market context for supported assets.
 3. Normalize data into internal domain types.
 4. Assemble a decision context.
-5. Run the conservative rule-based decision engine.
+5. Classify the market regime from public ticker plus `1h` / `4h` / `1d` candles.
+6. Evaluate whether an entry, add-buy, or reduce setup is allowed.
+7. Evaluate lower-timeframe trigger confirmation.
+8. Evaluate invalidation and risk.
 6. Apply the temporary `ACTION_NEEDED` policy for explicit operational cases only.
 7. Evaluate notification delivery with cooldown, sleep-mode, and chat-id suppression.
 8. Store a structured decision log with hourly diagnostics.
@@ -59,6 +62,24 @@ The future decision engine should receive a context object with these categories
 - normalized candles sufficient for future structure analysis
 - fetch timestamp
 
+### Active Rule Inputs
+The current conservative engine actively uses:
+
+- current price from the public ticker
+- `1h` / `4h` / `1d` candle history
+- EMA20 / EMA50 / EMA200
+- ATR14
+- recent swing high / swing low
+- recent support / resistance
+- range location inside the recent structure
+- volume ratio on the latest candle versus recent average volume
+- RSI14
+- MACD `(12, 26, 9)` and histogram direction
+- user-reported available cash
+- user-reported quantity and average entry price
+
+Indicators must remain inspectable and rule-based. They are confirmation inputs only, not a hidden scoring system.
+
 ## Decision Output Shape
 The decision engine output should remain machine-friendly and easy to replace.
 
@@ -78,16 +99,53 @@ Allowed MVP statuses:
 
 Future statuses may later include scenario or management categories, but they should not be added until real strategy logic exists.
 
+## Diagnostics Shape
+The current engine may attach structured diagnostics with these sections:
+
+- `regime`
+  - `classification`: `BULL_TREND` | `PULLBACK_IN_UPTREND` | `RANGE` | `WEAK_DOWNTREND` | `BREAKDOWN_RISK`
+  - `summary`
+- `setup`
+  - `kind`: `ENTRY` | `ADD_BUY` | `REDUCE` | `NONE`
+  - `state`: `READY` | `PROMISING` | `BLOCKED` | `NOT_APPLICABLE`
+  - `supports`
+  - `blockers`
+- `trigger`
+  - `state`: `CONFIRMED` | `PENDING` | `BEARISH_CONFIRMATION` | `NOT_APPLICABLE`
+  - `confirmed`
+  - `missing`
+- `risk`
+  - `level`: `LOW` | `MODERATE` | `ELEVATED` | `HIGH`
+  - `invalidationState`: `CLEAR` | `UNCLEAR` | `BROKEN`
+  - `invalidationLevel`
+  - `notes`
+- `indicators`
+  - `price`
+  - `timeframes["1h" | "4h" | "1d"]`
+    - `trend`
+    - `location`
+    - `ema20`
+    - `ema50`
+    - `ema200`
+    - `atr14`
+    - `rsi14`
+    - `macdHistogram`
+    - `volumeRatio`
+    - `support`
+    - `resistance`
+    - `swingLow`
+    - `swingHigh`
+
 ## Narrative Contract
 Decision summaries and reasons should read like conservative coaching, not execution guidance.
 
 - `summary` should give a short, explicit coaching takeaway.
-- `reasons` should explain setup, missing data, structure, invalidation, or risk in plain language.
+- `reasons` should explain regime, setup, trigger, invalidation, or risk in plain language.
 - `ACTION_NEEDED` should stay narrow and only cover manual correction, contradictory state, repeated operational failure, or clear invalidation/risk escalation.
 - The rule-based engine may use `ACTION_NEEDED` directly for risk review when structure weakens materially, while the temporary alert policy remains available for setup and operational failures.
 - The rule-based engine may also use `ACTION_NEEDED` for conservative `entry review` or `add-buy review` coaching when structure is constructive and the setup is not chasing price.
 - `NO_ACTION` should remain explicit that no order was executed and no order is being placed.
-- Direct phrases such as `entry review`, `add-buy review`, `reduce review`, or `exit plan review` are allowed only when they are explicitly framed as record-only coaching.
+- Direct phrases such as `entry review`, `add-buy review`, `reduce review`, `sell review`, `invalidation review`, or `exit plan review` are allowed only when they are explicitly framed as record-only coaching.
 
 ## Temporary Alert Policy
 `ACTION_NEEDED` is intentionally narrow and temporary. It should only be used for explicit, inspectable cases such as:
@@ -106,8 +164,8 @@ Notification behavior under this contract should remain conservative:
 - expose recent alert state through lightweight debug inspection, such as `/lastalert`
 
 Operator visibility should stay read-only and concise:
-- `/lastdecision` should summarize the latest decision status, summary, created time, and alert outcome
-- `/hourlyhealth` should summarize the latest verdict, cooldown skips, sleep suppression, setup blocks, and repeated market-data failures
+- `/lastdecision` should summarize the latest decision status, summary, created time, alert outcome, regime, trigger state, and invalidation state
+- `/hourlyhealth` should summarize the latest verdict, cooldown skips, sleep suppression, setup blocks, repeated market-data failures, and latest regime / trigger / invalidation state
 - `/lastalert` should summarize the most recent sent `ACTION_NEEDED` alert snapshot and cooldown window
 - none of these surfaces should imply trade execution or discretionary authority
 
@@ -130,19 +188,37 @@ Each decision log currently captures:
   - notification eligibility, sent/skipped outcome, suppression reason, cooldown key, and cooldown window
 
 The current MVP engine may summarize:
-- 1h / 4h / 1d trend direction
-- recent range high/low context
-- whether current price is pressing the lower, middle, or upper part of that range
+- market regime on `1h` / `4h` / `1d`
+- setup readiness for `ENTRY`, `ADD_BUY`, or `REDUCE`
+- trigger confirmation or absence
+- recent range high/low context and current range location
 - whether the recorded average entry is in profit or drawdown
 - whether available cash exists for a first entry review or a staged add-buy review
-- whether invalidation/risk review is becoming urgent for an existing spot position
+- whether invalidation or risk review is becoming urgent for an existing spot position
 
-The current MVP engine does not rely on external TA libraries. Its active rule inputs are:
-- public ticker price
-- 1h / 4h / 1d normalized candles
-- simple trend direction derived from recent candle closes
-- recent range location and support-break checks
-- recorded cash, quantity, and average entry price
+## Allowed Coaching Phrases
+Allowed coaching phrasing includes:
+
+- `entry review`
+- `add-buy review`
+- `reduce review`
+- `sell review`
+- `exit plan review`
+- `invalidation review`
+
+These phrases must remain coaching-only. They must not imply order execution, broker connectivity, or any private exchange capability. `No trade was executed.` should remain present in user-facing alert text.
+
+## Alert Contract
+The current alert reasons should stay narrow and explicit:
+
+- `COMPLETE_SETUP`
+- `INVALID_RECORDED_STATE`
+- `MARKET_DATA_UNAVAILABLE`
+- `ENTRY_REVIEW_REQUIRED`
+- `ADD_BUY_REVIEW_REQUIRED`
+- `REDUCE_REVIEW_REQUIRED`
+
+Different delivery policies may later be applied per reason, but the contract should remain stable and conservative.
 
 ## Design Constraints
 - Keep domain types explicit and serializable.

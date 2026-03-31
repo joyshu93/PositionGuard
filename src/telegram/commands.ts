@@ -525,6 +525,7 @@ function renderHourlyHealthSnapshot(
     `Missing: ${formatNextSteps(snapshot.readiness.missingItems)}`,
     `Last run: ${snapshot.lastRunAt ? formatCompactTimestamp(snapshot.lastRunAt) : 'none'} | status: ${snapshot.lastDecisionStatus ?? 'none'} | verdict: ${describeDecisionVerdict(snapshot.lastDecisionStatus)}`,
     `Market data: ${snapshot.marketDataStatus ?? 'none'} | failures: ${snapshot.recentMarketFailureCount} | latest issue: ${snapshot.latestMarketFailureMessage ? truncateText(snapshot.latestMarketFailureMessage, 100) : 'none'}`,
+    `Structure: regime ${snapshot.latestRegime ?? 'n/a'} | trigger ${snapshot.latestTriggerState ?? 'n/a'} | invalidation ${snapshot.latestInvalidationState ?? 'n/a'}`,
     `Suppression: cooldown ${snapshot.recentCooldownSkipCount} | sleep ${snapshot.recentSleepSuppressionCount} | setup ${snapshot.recentSetupBlockedCount}`,
     `Latest alert: ${latestNotification}`,
     'Operational only. No trade was executed.',
@@ -560,6 +561,7 @@ function formatDecisionLine(line: TelegramLastDecisionSnapshot['lines'][number])
     `${line.alertOutcome}${line.suppressedBy ? ` (${line.suppressedBy})` : ''}`,
     `when ${formatCompactTimestamp(line.createdAt)}`,
     `summary ${truncateText(line.summary, 90)}`,
+    `regime ${line.regime ?? 'n/a'} | trigger ${line.triggerState ?? 'n/a'} | invalidation ${line.invalidationState ?? 'n/a'}`,
   ].join(' | ');
 }
 
@@ -677,4 +679,3 @@ function answer(callbackQueryId: string, text?: string): TelegramOutgoingAction 
     ? { kind: 'answerCallbackQuery', callbackQueryId, text }
     : { kind: 'answerCallbackQuery', callbackQueryId };
 }
-

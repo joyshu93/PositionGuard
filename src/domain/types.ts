@@ -100,6 +100,29 @@ export type DecisionStatus =
   | "NO_ACTION"
   | "ACTION_NEEDED";
 
+export type MarketRegime =
+  | "BULL_TREND"
+  | "PULLBACK_IN_UPTREND"
+  | "RANGE"
+  | "WEAK_DOWNTREND"
+  | "BREAKDOWN_RISK";
+
+export type DecisionSetupState =
+  | "READY"
+  | "PROMISING"
+  | "BLOCKED"
+  | "NOT_APPLICABLE";
+
+export type DecisionTriggerState =
+  | "CONFIRMED"
+  | "PENDING"
+  | "BEARISH_CONFIRMATION"
+  | "NOT_APPLICABLE";
+
+export type DecisionRiskLevel = "LOW" | "MODERATE" | "ELEVATED" | "HIGH";
+
+export type InvalidationState = "CLEAR" | "UNCLEAR" | "BROKEN";
+
 export type ActionNeededReason =
   | "COMPLETE_SETUP"
   | "INVALID_RECORDED_STATE"
@@ -115,6 +138,50 @@ export interface ActionNeededAlert {
   message: string;
 }
 
+export interface DecisionDiagnosticsTimeframeSnapshot {
+  trend: "UP" | "DOWN" | "FLAT";
+  location: "LOWER" | "MIDDLE" | "UPPER";
+  ema20: number | null;
+  ema50: number | null;
+  ema200: number | null;
+  atr14: number | null;
+  rsi14: number | null;
+  macdHistogram: number | null;
+  volumeRatio: number | null;
+  support: number | null;
+  resistance: number | null;
+  swingLow: number | null;
+  swingHigh: number | null;
+}
+
+export interface DecisionDiagnostics {
+  regime: {
+    classification: MarketRegime;
+    summary: string;
+  } | null;
+  setup: {
+    kind: "ENTRY" | "ADD_BUY" | "REDUCE" | "NONE";
+    state: DecisionSetupState;
+    supports: string[];
+    blockers: string[];
+  };
+  trigger: {
+    state: DecisionTriggerState;
+    confirmed: string[];
+    missing: string[];
+  };
+  risk: {
+    level: DecisionRiskLevel;
+    invalidationState: InvalidationState;
+    invalidationLevel: number | null;
+    notes: string[];
+  };
+  indicators: {
+    price: number | null;
+    timeframes: Record<SupportedTimeframe, DecisionDiagnosticsTimeframeSnapshot>;
+  };
+}
+
 export interface DecisionResult {
   status: DecisionStatus;
   summary: string;
@@ -123,6 +190,7 @@ export interface DecisionResult {
   symbol: SupportedMarket | null;
   generatedAt: string;
   alert: ActionNeededAlert | null;
+  diagnostics?: DecisionDiagnostics | null;
 }
 
 export interface DecisionLogRecord {

@@ -86,6 +86,7 @@ function elevateToActionNeeded(
     symbol: baseDecision.symbol ?? context.marketSnapshot?.market ?? null,
     generatedAt: context.generatedAt,
     alert,
+    ...(baseDecision.diagnostics ? { diagnostics: baseDecision.diagnostics } : {}),
   };
 }
 

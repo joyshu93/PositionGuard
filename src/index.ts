@@ -258,6 +258,9 @@ async function handleFetch(
                 createdAt: view.generatedAt,
                 alertOutcome: view.alertOutcome,
                 suppressedBy: view.suppressionReason,
+                regime: view.regime,
+                triggerState: view.triggerState,
+                invalidationState: view.invalidationState,
               })),
             };
           },
@@ -301,6 +304,9 @@ async function handleFetch(
               recentSleepSuppressionCount: view.recentSleepSuppressionCount,
               recentSetupBlockedCount: view.recentSetupBlockedCount,
               latestMarketFailureMessage: view.latestMarketFailureMessage,
+              latestRegime: view.latestRegime,
+              latestTriggerState: view.latestTriggerState,
+              latestInvalidationState: view.latestInvalidationState,
               latestNotification: latestNotification
                 ? {
                     deliveryStatus: latestNotification.deliveryStatus,

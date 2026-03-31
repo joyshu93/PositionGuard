@@ -128,6 +128,9 @@ export interface TelegramLastDecisionLine {
   createdAt: string;
   alertOutcome: "sent" | "skipped" | "not_applicable";
   suppressedBy: string | null;
+  regime: string | null;
+  triggerState: string | null;
+  invalidationState: string | null;
 }
 
 export interface TelegramLastDecisionSnapshot {
@@ -151,6 +154,9 @@ export interface TelegramHourlyHealthSnapshot {
   recentSleepSuppressionCount: number;
   recentSetupBlockedCount: number;
   latestMarketFailureMessage: string | null;
+  latestRegime: string | null;
+  latestTriggerState: string | null;
+  latestInvalidationState: string | null;
   latestNotification: {
     deliveryStatus: "SENT" | "SKIPPED";
     reasonKey: string | null;

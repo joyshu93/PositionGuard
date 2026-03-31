@@ -65,6 +65,9 @@ const inspectionProvider: TelegramInspectionProvider = {
           createdAt: "2026-01-01T03:00:00.000Z",
           alertOutcome: "sent",
           suppressedBy: null,
+          regime: "PULLBACK_IN_UPTREND",
+          triggerState: "CONFIRMED",
+          invalidationState: "CLEAR",
         },
         {
           asset: "ETH",
@@ -73,6 +76,9 @@ const inspectionProvider: TelegramInspectionProvider = {
           createdAt: "2026-01-01T02:00:00.000Z",
           alertOutcome: "not_applicable",
           suppressedBy: null,
+          regime: "RANGE",
+          triggerState: "WAITING",
+          invalidationState: "CLEAR",
         },
       ],
     };
@@ -94,6 +100,9 @@ const inspectionProvider: TelegramInspectionProvider = {
       recentSleepSuppressionCount: 1,
       recentSetupBlockedCount: 4,
       latestMarketFailureMessage: "Upbit request failed (502 Bad Gateway): upstream timeout",
+      latestRegime: "PULLBACK_IN_UPTREND",
+      latestTriggerState: "CONFIRMED",
+      latestInvalidationState: "CLEAR",
       latestNotification: {
         deliveryStatus: "SENT",
         reasonKey: "btc-setup-incomplete",
@@ -334,7 +343,7 @@ if (alertAction && alertAction.kind === "sendMessage") {
 }
 
 assert(
-  alertText.includes("Cooldown until: 2026-01-01T09:00:00Z"),
+  alertText.includes("Cooldown until: 2026-01-01 18:00:00 KST"),
   "/lastalert should expose cooldown visibility for debugging.",
 );
 
@@ -362,6 +371,7 @@ assert(
     lastDecisionText.includes("Tracked assets: BTC, ETH") &&
     lastDecisionText.includes("status ACTION_NEEDED") &&
     lastDecisionText.includes("summary Manual setup is incomplete.") &&
+    lastDecisionText.includes("regime PULLBACK_IN_UPTREND | trigger CONFIRMED | invalidation CLEAR") &&
     lastDecisionText.includes("Operational only. No trade was executed."),
   "/lastdecision should render a compact operational summary.",
 );
@@ -389,6 +399,7 @@ assert(
   hourlyHealthText.includes("Hourly health:") &&
     hourlyHealthText.includes("verdict: action needed") &&
     hourlyHealthText.includes("Market data: fetch_failure") &&
+    hourlyHealthText.includes("Structure: regime PULLBACK_IN_UPTREND | trigger CONFIRMED | invalidation CLEAR") &&
     hourlyHealthText.includes("Suppression: cooldown 2 | sleep 1 | setup 4"),
   "/hourlyhealth should render compact operational health details.",
 );

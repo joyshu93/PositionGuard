@@ -11,6 +11,9 @@ export interface LastDecisionView {
   generatedAt: string;
   alertOutcome: "sent" | "skipped" | "not_applicable";
   suppressionReason: string | null;
+  regime: string | null;
+  triggerState: string | null;
+  invalidationState: string | null;
 }
 
 export interface HourlyHealthView {
@@ -21,6 +24,9 @@ export interface HourlyHealthView {
   recentSleepSuppressionCount: number;
   recentSetupBlockedCount: number;
   latestMarketFailureMessage: string | null;
+  latestRegime: string | null;
+  latestTriggerState: string | null;
+  latestInvalidationState: string | null;
 }
 
 export function buildLastDecisionView(
@@ -45,6 +51,18 @@ export function buildLastDecisionView(
     generatedAt: decision.createdAt,
     alertOutcome,
     suppressionReason,
+    regime:
+      typeof diagnostics?.decisionDetails?.regime === "string"
+        ? diagnostics.decisionDetails.regime
+        : null,
+    triggerState:
+      typeof diagnostics?.decisionDetails?.triggerState === "string"
+        ? diagnostics.decisionDetails.triggerState
+        : null,
+    invalidationState:
+      typeof diagnostics?.decisionDetails?.invalidationState === "string"
+        ? diagnostics.decisionDetails.invalidationState
+        : null,
   };
 }
 
@@ -69,6 +87,9 @@ export function buildHourlyHealthView(input: {
       (decision) => decision.decisionStatus === "SETUP_INCOMPLETE",
     ).length,
     latestMarketFailureMessage: getLatestMarketFailureMessage(latestMarketFailure),
+    latestRegime: getLatestDecisionDetail(latestDecision, "regime"),
+    latestTriggerState: getLatestDecisionDetail(latestDecision, "triggerState"),
+    latestInvalidationState: getLatestDecisionDetail(latestDecision, "invalidationState"),
   };
 }
 
@@ -85,6 +106,7 @@ export function renderLastDecisionMessage(view: LastDecisionView | null): string
     `When: ${view.generatedAt}`,
     `Summary: ${view.summary}`,
     `Alert: ${formatAlertOutcome(view)}`,
+    `Regime: ${view.regime ?? "n/a"} | Trigger: ${view.triggerState ?? "n/a"} | Invalidation: ${view.invalidationState ?? "n/a"}`,
     `Note: ${describeDecisionNote(view.status)}`,
   ];
 
@@ -100,6 +122,7 @@ export function renderHourlyHealthMessage(view: HourlyHealthView): string {
     `Recent cooldown skips: ${view.recentCooldownSkipCount}`,
     `Recent sleep suppressions: ${view.recentSleepSuppressionCount}`,
     `Recent setup-blocked cycles: ${view.recentSetupBlockedCount}`,
+    `Latest structure: regime ${view.latestRegime ?? "n/a"} | trigger ${view.latestTriggerState ?? "n/a"} | invalidation ${view.latestInvalidationState ?? "n/a"}`,
     `Latest market issue: ${view.latestMarketFailureMessage ?? "none"}`,
     "Operational only. No trade was executed.",
   ].join("\n");
@@ -192,6 +215,11 @@ function getDiagnostics(
         sent?: unknown;
         suppressedBy?: unknown;
       };
+      decisionDetails?: {
+        regime?: unknown;
+        triggerState?: unknown;
+        invalidationState?: unknown;
+      };
     }
   | undefined {
   if (!context || typeof context !== "object") {
@@ -212,6 +240,11 @@ function getDiagnostics(
       sent?: unknown;
       suppressedBy?: unknown;
     };
+    decisionDetails?: {
+      regime?: unknown;
+      triggerState?: unknown;
+      invalidationState?: unknown;
+    };
   };
 }
 
@@ -220,4 +253,12 @@ function getLatestMarketFailureMessage(
 ): string | null {
   const message = getDiagnostics(decision?.context)?.marketData?.message;
   return typeof message === "string" ? message : null;
+}
+
+function getLatestDecisionDetail(
+  decision: DecisionLogRecord | null,
+  key: "regime" | "triggerState" | "invalidationState",
+): string | null {
+  const value = getDiagnostics(decision?.context)?.decisionDetails?.[key];
+  return typeof value === "string" ? value : null;
 }

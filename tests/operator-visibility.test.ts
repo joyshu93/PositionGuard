@@ -29,6 +29,11 @@ const cooldownDecision: DecisionLogRecord = {
         sent: false,
         suppressedBy: "cooldown",
       },
+      decisionDetails: {
+        regime: "PULLBACK_IN_UPTREND",
+        triggerState: "CONFIRMED",
+        invalidationState: "CLEAR",
+      },
     },
   },
   createdAt: "2026-01-01T03:00:00.000Z",
@@ -55,6 +60,11 @@ const marketFailureDecision: DecisionLogRecord = {
         sent: false,
         suppressedBy: null,
       },
+      decisionDetails: {
+        regime: "BREAKDOWN_RISK",
+        triggerState: "RISK_OFF",
+        invalidationState: "BROKEN",
+      },
     },
   },
   createdAt: "2026-01-01T02:00:00.000Z",
@@ -78,6 +88,11 @@ const setupBlockedDecision: DecisionLogRecord = {
       notificationState: {
         sent: false,
         suppressedBy: null,
+      },
+      decisionDetails: {
+        regime: null,
+        triggerState: null,
+        invalidationState: null,
       },
     },
   },
@@ -128,9 +143,15 @@ assertEqual(
   "cooldown",
   "Last decision view should preserve suppression reason visibility.",
 );
+assertEqual(
+  lastDecisionView?.regime ?? null,
+  "PULLBACK_IN_UPTREND",
+  "Last decision view should expose the latest regime.",
+);
 assert(
   renderLastDecisionMessage(lastDecisionView).includes("Verdict: action needed") &&
     renderLastDecisionMessage(lastDecisionView).includes("Alert: skipped (cooldown)") &&
+    renderLastDecisionMessage(lastDecisionView).includes("Regime: PULLBACK_IN_UPTREND | Trigger: CONFIRMED | Invalidation: CLEAR") &&
     renderLastDecisionMessage(lastDecisionView).includes("Note: operator follow-up is required"),
   "Rendered last-decision message should explain the verdict and cooldown skip.",
 );
@@ -162,6 +183,7 @@ assertEqual(
 );
 assert(
   renderHourlyHealthMessage(hourlyHealthView).includes("Latest verdict: action needed") &&
+    renderHourlyHealthMessage(hourlyHealthView).includes("Latest structure: regime PULLBACK_IN_UPTREND | trigger CONFIRMED | invalidation CLEAR") &&
     renderHourlyHealthMessage(hourlyHealthView).includes("Latest market issue: Timeout while calling Upbit."),
   "Rendered hourly health should surface the latest verdict and market-data issue.",
 );

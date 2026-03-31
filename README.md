@@ -307,13 +307,14 @@ This remains a manual record system. It does not sync balances or execute orders
 - Onboarding is intentionally lightweight; inline buttons guide setup, but cash and position values are still entered with commands
 - `/lastalert`, `/lastdecision`, and `/hourlyhealth` are user-scoped inspection tools, not a global admin console
 
-Decision outputs are structured as coaching summaries and reasons, and the current engine stays conservative and record-only. It summarizes simple 1h / 4h / 1d trend direction, recent range location, recorded average-entry profit/loss direction, and explicit invalidation-risk checks. It still prefers `SETUP_INCOMPLETE` / `INSUFFICIENT_DATA` / `NO_ACTION` when information is missing or structure is quiet, and keeps `ACTION_NEEDED` narrow for explicit manual correction, repeated market-data failure, or urgent risk/invalidation review.
+Decision outputs are structured as coaching summaries and reasons, and the current engine stays conservative and record-only. It now evaluates public BTC/ETH spot structure through a staged `regime -> setup -> trigger -> risk -> coaching wording` flow. It still prefers `SETUP_INCOMPLETE` / `INSUFFICIENT_DATA` / `NO_ACTION` when information is missing or structure is quiet, and keeps `ACTION_NEEDED` narrow for explicit manual correction, repeated market-data failure, or a clear coaching review need.
 
 Current coaching behavior is intentionally narrow and rule-based:
 
-- `entry review`: possible only when a tracked asset has no recorded spot inventory, cash is available, higher timeframe structure is not broken, and current price is not already chasing the upper range
-- `add-buy review`: possible only when a recorded spot position exists, cash remains available, higher timeframe structure is still intact, and the current location looks more like a pullback than a chase
-- `reduce review`: possible when drawdown, lower-range pressure, and higher timeframe weakness line up strongly enough that invalidation-first review is needed
+- `entry review`: possible only when a tracked asset has no recorded spot inventory, cash is available, higher timeframe structure is not in outright breakdown risk, current price is not chasing the upper range, invalidation is explainable, and the lower-timeframe trigger has improved enough to justify a conservative spot entry review
+- `add-buy review`: possible only when a recorded spot position exists, cash remains available, higher timeframe structure is still constructive or neutral, the current location looks more like a pullback or reclaim than a chase, and the trigger is supportive enough for a staged add-buy review
+- `reduce review`: possible when drawdown, lower-range pressure, invalidation damage, and higher timeframe weakness line up strongly enough that invalidation-first review is needed
+- `sell review` / `exit plan review`: these phrases may appear inside reduce-side coaching when support has failed materially, but they remain coaching-only and non-execution framed
 
 None of these messages execute anything. They remain coaching-only, scenario-based, and always preserve the record-only boundary.
 
@@ -333,13 +334,28 @@ The Upbit client normalizes public quotation responses into internal types and s
 - 4 hours via `minutes/240`
 - daily via `days`
 
-The current MVP engine uses those candles for simple, inspectable structure analysis only:
+The current MVP engine uses those candles and public ticker data for explicit, inspectable structure analysis only:
 
-- trend direction on `1h`, `4h`, and `1d`
-- recent high/low range context
-- current price location inside the recent range
-- recorded average-entry profit/loss direction
-- explicit support-break / invalidation checks
-- cash-on-record checks for entry review and add-buy review eligibility
+- current price from the public ticker
+- `1h`, `4h`, and `1d` normalized candles
+- EMA20 / EMA50 / EMA200
+- ATR14
+- recent swing high / swing low
+- recent support / resistance
+- range location inside the recent structure
+- volume ratio: recent candle volume versus recent average volume
+- RSI14
+- MACD `(12, 26, 9)` with histogram improvement or deterioration checks
+- recorded cash, quantity, and average entry price
 
-The current engine does not use an external TA library and does not currently rely on SMA, EMA, RSI, or MACD. Its active inputs are public ticker price, recent candle structure, range location, tracked cash, recorded quantity, and recorded average entry.
+These indicators are calculated inside the repository without an external TA library. They are used as explainable confirmation inputs, not as a single opaque score. Price structure, range location, support/resistance, and invalidation remain primary, while EMA / ATR / RSI / MACD / volume ratio are secondary confirmation inputs.
+
+The current decision flow is:
+
+1. classify the higher-timeframe market regime
+2. decide whether an entry / add-buy / reduce setup is even allowed
+3. confirm or reject the lower-timeframe trigger
+4. evaluate invalidation and risk
+5. produce conservative coaching wording and alert policy output
+
+Current operator visibility remains concise but now includes the latest regime, trigger state, and invalidation state in `/lastdecision` and `/hourlyhealth`. `/lastalert` remains a compact record of the most recent sent `ACTION_NEEDED` alert.
