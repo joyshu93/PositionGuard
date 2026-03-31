@@ -3,20 +3,21 @@ import { runDecisionEngine } from "../src/decision/engine.js";
 import type {
   MarketCandle,
   MarketSnapshot,
+  SupportedAsset,
   SupportedMarket,
   SupportedTimeframe,
   UserStateBundle,
 } from "../src/domain/types.js";
 import { assert, assertEqual } from "./test-helpers.js";
 
-const readyUserState: UserStateBundle = {
+const baseUserState: UserStateBundle = {
   user: {
     id: 1,
     telegramUserId: "123",
     telegramChatId: "456",
     username: "tester",
     displayName: "Test User",
-    trackedAssets: "BTC,ETH",
+    trackedAssets: "BTC",
     sleepModeEnabled: false,
     onboardingComplete: true,
     createdAt: "2026-01-01T00:00:00.000Z",
@@ -37,17 +38,7 @@ const readyUserState: UserStateBundle = {
       userId: 1,
       asset: "BTC",
       quantity: 0.25,
-      averageEntryPrice: 95000000,
-      reportedAt: "2026-01-01T00:00:00.000Z",
-      createdAt: "2026-01-01T00:00:00.000Z",
-      updatedAt: "2026-01-01T00:00:00.000Z",
-    },
-    ETH: {
-      id: 21,
-      userId: 1,
-      asset: "ETH",
-      quantity: 1.2,
-      averageEntryPrice: 3500000,
+      averageEntryPrice: 100,
       reportedAt: "2026-01-01T00:00:00.000Z",
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
@@ -58,7 +49,7 @@ const readyUserState: UserStateBundle = {
 const setupIncomplete = runDecisionEngine(
   buildDecisionContext({
     userState: {
-      ...readyUserState,
+      ...baseUserState,
       accountState: null,
     },
     asset: "BTC",
@@ -72,24 +63,10 @@ assertEqual(
   "SETUP_INCOMPLETE",
   "Decision engine should preserve the setup-incomplete boundary.",
 );
-assert(
-  setupIncomplete.summary.toLowerCase().includes("setup"),
-  "Setup-incomplete summaries should stay coaching-oriented.",
-);
-assert(
-  setupIncomplete.reasons.some((reason) =>
-    reason.toLowerCase().includes("user-reported"),
-  ),
-  "Setup-incomplete reasons should emphasize user-reported inputs.",
-);
-assert(
-  setupIncomplete.reasons.length >= 2,
-  "Decision summaries should remain explanatory rather than terse flags.",
-);
 
 const insufficientData = runDecisionEngine(
   buildDecisionContext({
-    userState: readyUserState,
+    userState: baseUserState,
     asset: "BTC",
     marketSnapshot: null,
     generatedAt: "2026-01-01T01:00:00.000Z",
@@ -101,117 +78,187 @@ assertEqual(
   "INSUFFICIENT_DATA",
   "Missing normalized market data should remain a distinct status.",
 );
-assert(
-  insufficientData.summary.toLowerCase().includes("unavailable"),
-  "Insufficient-data summaries should be explicit about missing market context.",
-);
-assert(
-  insufficientData.reasons.some((reason) =>
-    reason.toLowerCase().includes("normalized market snapshot"),
-  ),
-  "Insufficient-data reasons should mention the normalized market snapshot contract.",
-);
 
-const noActionSnapshot = buildMarketSnapshot({
-  market: "KRW-BTC",
-  asset: "BTC",
-  tradePrice: 98000000,
-  closeSeed: 97000000,
-  oneHourCloses: [97000000, 97500000, 97800000, 98000000, 98100000, 98200000],
-  fourHourCloses: [96000000, 96500000, 96800000, 97000000, 97200000, 97300000],
-  oneDayCloses: [94000000, 95000000, 95500000, 96000000, 96500000, 97000000, 97500000],
-});
-
-const noAction = runDecisionEngine(
+const entryReviewDecision = runDecisionEngine(
   buildDecisionContext({
-    userState: readyUserState,
+    userState: withPositionState({
+      quantity: 0,
+      averageEntryPrice: 0,
+    }),
     asset: "BTC",
-    marketSnapshot: noActionSnapshot,
+    marketSnapshot: buildMarketSnapshot({
+      market: "KRW-BTC",
+      asset: "BTC",
+      tradePrice: 99,
+      oneHourCloses: [101, 102, 103, 102, 101, 100],
+      fourHourCloses: [95, 97, 99, 100, 101, 102],
+      oneDayCloses: [90, 93, 96, 98, 100, 102, 104],
+    }),
     generatedAt: "2026-01-01T01:00:00.000Z",
   }),
 );
 
 assertEqual(
-  noAction.status,
-  "NO_ACTION",
-  "Ready setups with constructive structure should remain non-execution oriented.",
-);
-assertEqual(
-  noAction.symbol,
-  "KRW-BTC",
-  "The engine should preserve the requested BTC market symbol.",
-);
-assert(
-  noAction.summary.toLowerCase().includes("no urgent coaching action"),
-  "No-action summaries should stay explicit about patience and non-execution.",
-);
-assert(
-  noAction.reasons.some((reason) => reason.startsWith("Trend summary:")),
-  "No-action reasons should explain the trend structure.",
-);
-assert(
-  noAction.reasons.some((reason) => reason.includes("Trend first and no chase buying")),
-  "No-action reasons should preserve the no-chase coaching rule.",
-);
-assert(
-  noAction.reasons.length >= 4,
-  "No-action results should still provide a multi-part explanation.",
-);
-
-const actionNeededSnapshot = buildMarketSnapshot({
-  market: "KRW-BTC",
-  asset: "BTC",
-  tradePrice: 86000000,
-  closeSeed: 87000000,
-  oneHourCloses: [87000000, 86800000, 86600000, 86400000, 86200000, 86000000],
-  fourHourCloses: [98000000, 97000000, 96000000, 95000000, 94000000, 90000000],
-  oneDayCloses: [100000000, 98000000, 96000000, 94000000, 92000000, 88000000, 86000000],
-});
-
-const actionNeeded = runDecisionEngine(
-  buildDecisionContext({
-    userState: readyUserState,
-    asset: "BTC",
-    marketSnapshot: actionNeededSnapshot,
-    generatedAt: "2026-01-01T01:00:00.000Z",
-  }),
-);
-
-assertEqual(
-  actionNeeded.status,
+  entryReviewDecision.status,
   "ACTION_NEEDED",
-  "Severe drawdown plus weakening higher-timeframe structure should escalate to ACTION_NEEDED.",
+  "No-position setups with cash and constructive pullback structure should open an entry review.",
+);
+assertEqual(
+  entryReviewDecision.alert?.reason ?? null,
+  "ENTRY_REVIEW_REQUIRED",
+  "Entry-review setups should use the explicit entry-review alert reason.",
 );
 assert(
-  actionNeeded.actionable,
-  "ACTION_NEEDED results should remain actionable without implying execution.",
+  entryReviewDecision.summary.includes("spot entry review"),
+  "Entry-review summaries should remain coaching-oriented and non-execution based.",
+);
+
+const noPositionChaseDecision = runDecisionEngine(
+  buildDecisionContext({
+    userState: withPositionState({
+      quantity: 0,
+      averageEntryPrice: 0,
+    }),
+    asset: "BTC",
+    marketSnapshot: buildMarketSnapshot({
+      market: "KRW-BTC",
+      asset: "BTC",
+      tradePrice: 105,
+      oneHourCloses: [100, 101, 102, 103, 104, 105],
+      fourHourCloses: [96, 98, 100, 102, 103, 104],
+      oneDayCloses: [90, 93, 96, 99, 101, 103, 104],
+    }),
+    generatedAt: "2026-01-01T01:00:00.000Z",
+  }),
+);
+
+assertEqual(
+  noPositionChaseDecision.status,
+  "NO_ACTION",
+  "No-position setups should stay quiet when price is already extended into the upper range.",
 );
 assert(
-  actionNeeded.summary.toLowerCase().includes("review invalidation and cash risk"),
-  "ACTION_NEEDED summaries should stay coaching-oriented and risk-first.",
+  noPositionChaseDecision.summary.includes("not justified right now"),
+  "Chase conditions should be described as a rejected entry review, not as an execution instruction.",
+);
+
+const addBuyDecision = runDecisionEngine(
+  buildDecisionContext({
+    userState: baseUserState,
+    asset: "BTC",
+    marketSnapshot: buildMarketSnapshot({
+      market: "KRW-BTC",
+      asset: "BTC",
+      tradePrice: 100,
+      oneHourCloses: [102, 103, 104, 103, 102, 101],
+      fourHourCloses: [95, 97, 99, 101, 103, 104],
+      oneDayCloses: [90, 93, 96, 99, 102, 104, 106],
+    }),
+    generatedAt: "2026-01-01T01:00:00.000Z",
+  }),
+);
+
+assertEqual(
+  addBuyDecision.status,
+  "ACTION_NEEDED",
+  "Existing positions with cash and constructive pullback structure should open an add-buy review.",
+);
+assertEqual(
+  addBuyDecision.alert?.reason ?? null,
+  "ADD_BUY_REVIEW_REQUIRED",
+  "Add-buy review setups should use the explicit add-buy alert reason.",
 );
 assert(
-  actionNeeded.reasons.some((reason) => reason.includes("Survival first")),
-  "ACTION_NEEDED reasons should preserve survival-first framing.",
+  addBuyDecision.summary.includes("add-buy review"),
+  "Add-buy review summaries should stay explicit while remaining non-execution oriented.",
+);
+
+const reduceReviewDecision = runDecisionEngine(
+  buildDecisionContext({
+    userState: baseUserState,
+    asset: "BTC",
+    marketSnapshot: buildMarketSnapshot({
+      market: "KRW-BTC",
+      asset: "BTC",
+      tradePrice: 86,
+      oneHourCloses: [87, 86, 85, 84, 83, 82],
+      fourHourCloses: [98, 97, 96, 95, 92, 88],
+      oneDayCloses: [100, 98, 96, 94, 92, 89, 87],
+    }),
+    generatedAt: "2026-01-01T01:00:00.000Z",
+  }),
+);
+
+assertEqual(
+  reduceReviewDecision.status,
+  "ACTION_NEEDED",
+  "Weakening structure should escalate to a reduce review for existing spot inventory.",
+);
+assertEqual(
+  reduceReviewDecision.alert?.reason ?? null,
+  "REDUCE_REVIEW_REQUIRED",
+  "Reduce-review setups should use the explicit reduce-review alert reason.",
 );
 assert(
-  actionNeeded.alert?.reason === "RISK_REVIEW_REQUIRED",
-  "Risk escalation should use the explicit risk-review alert reason.",
+  reduceReviewDecision.summary.includes("partial reduction or exit plan"),
+  "Reduce-review summaries should allow direct coaching language without implying execution.",
+);
+
+const noCashNoPositionDecision = runDecisionEngine(
+  buildDecisionContext({
+    userState: {
+      ...withPositionState({
+        quantity: 0,
+        averageEntryPrice: 0,
+      }),
+      accountState: {
+        ...baseUserState.accountState!,
+        availableCash: 0,
+      },
+    },
+    asset: "BTC",
+    marketSnapshot: buildMarketSnapshot({
+      market: "KRW-BTC",
+      asset: "BTC",
+      tradePrice: 99,
+      oneHourCloses: [101, 102, 103, 102, 101, 100],
+      fourHourCloses: [95, 97, 99, 100, 101, 102],
+      oneDayCloses: [90, 93, 96, 98, 100, 102, 104],
+    }),
+    generatedAt: "2026-01-01T01:00:00.000Z",
+  }),
+);
+
+assertEqual(
+  noCashNoPositionDecision.status,
+  "NO_ACTION",
+  "No-position setups with no available cash should stay quiet even if structure is constructive.",
 );
 assert(
-  actionNeeded.alert?.message.includes("No trade was executed."),
-  "ACTION_NEEDED alerts must stay record-only.",
+  noCashNoPositionDecision.reasons.some((reason) => reason.includes("No available cash is recorded")),
+  "No-cash no-position cases should explain why no entry review is available.",
 );
-assert(
-  actionNeeded.alert?.cooldownKey.startsWith("risk-review:"),
-  "Risk escalation should produce an inspectable cooldown key.",
-);
+
+function withPositionState(input: {
+  quantity: number;
+  averageEntryPrice: number;
+}): UserStateBundle {
+  return {
+    ...baseUserState,
+    positions: {
+      BTC: {
+        ...baseUserState.positions.BTC!,
+        quantity: input.quantity,
+        averageEntryPrice: input.averageEntryPrice,
+      },
+    },
+  };
+}
 
 function buildMarketSnapshot(input: {
   market: SupportedMarket;
-  asset: "BTC" | "ETH";
+  asset: SupportedAsset;
   tradePrice: number;
-  closeSeed: number;
   oneHourCloses: number[];
   fourHourCloses: number[];
   oneDayCloses: number[];

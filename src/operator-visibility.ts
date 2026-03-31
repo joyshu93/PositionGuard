@@ -80,10 +80,12 @@ export function renderLastDecisionMessage(view: LastDecisionView | null): string
   const lines = [
     "Last decision:",
     `Asset: ${view.asset}`,
+    `Verdict: ${describeDecisionVerdict(view.status)}`,
     `Status: ${view.status}`,
     `When: ${view.generatedAt}`,
     `Summary: ${view.summary}`,
     `Alert: ${formatAlertOutcome(view)}`,
+    `Note: ${describeDecisionNote(view.status)}`,
   ];
 
   return lines.join("\n");
@@ -93,6 +95,7 @@ export function renderHourlyHealthMessage(view: HourlyHealthView): string {
   return [
     "Hourly health:",
     `Latest decision: ${view.latestDecisionStatus ?? "none"}${view.latestDecisionAt ? ` @ ${view.latestDecisionAt}` : ""}`,
+    `Latest verdict: ${describeDecisionVerdict(view.latestDecisionStatus)}`,
     `Recent market-data failures: ${view.recentMarketFailureCount}`,
     `Recent cooldown skips: ${view.recentCooldownSkipCount}`,
     `Recent sleep suppressions: ${view.recentSleepSuppressionCount}`,
@@ -123,6 +126,46 @@ function formatAlertOutcome(view: LastDecisionView): string {
   }
 
   return `${view.alertOutcome} (${view.suppressionReason})`;
+}
+
+export function describeDecisionVerdict(status: string | null | undefined): string {
+  if (status === "SETUP_INCOMPLETE") {
+    return "setup incomplete";
+  }
+
+  if (status === "INSUFFICIENT_DATA") {
+    return "insufficient data";
+  }
+
+  if (status === "NO_ACTION") {
+    return "no action";
+  }
+
+  if (status === "ACTION_NEEDED") {
+    return "action needed";
+  }
+
+  return "unknown";
+}
+
+function describeDecisionNote(status: string | null | undefined): string {
+  if (status === "SETUP_INCOMPLETE") {
+    return "waiting for missing manual inputs";
+  }
+
+  if (status === "INSUFFICIENT_DATA") {
+    return "hourly market context was not complete";
+  }
+
+  if (status === "NO_ACTION") {
+    return "current rules do not require action";
+  }
+
+  if (status === "ACTION_NEEDED") {
+    return "operator follow-up is required";
+  }
+
+  return "status is not recognized";
 }
 
 function countSuppression(

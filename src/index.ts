@@ -419,6 +419,22 @@ function inferTelegramAlertReason(
     return "INVALID_STORED_STATE";
   }
 
+  if (alertReason === "RISK_REVIEW_REQUIRED") {
+    return "RISK_REVIEW_REQUIRED";
+  }
+
+  if (alertReason === "ENTRY_REVIEW_REQUIRED") {
+    return "ENTRY_REVIEW_REQUIRED";
+  }
+
+  if (alertReason === "ADD_BUY_REVIEW_REQUIRED") {
+    return "ADD_BUY_REVIEW_REQUIRED";
+  }
+
+  if (alertReason === "REDUCE_REVIEW_REQUIRED") {
+    return "REDUCE_REVIEW_REQUIRED";
+  }
+
   return "SETUP_INCOMPLETE";
 }
 
@@ -457,4 +473,3 @@ function inferMarketDataStatus(
 
   return null;
 }
-

@@ -129,8 +129,10 @@ assertEqual(
   "Last decision view should preserve suppression reason visibility.",
 );
 assert(
-  renderLastDecisionMessage(lastDecisionView).includes("Alert: skipped (cooldown)"),
-  "Rendered last-decision message should explain cooldown skips.",
+  renderLastDecisionMessage(lastDecisionView).includes("Verdict: action needed") &&
+    renderLastDecisionMessage(lastDecisionView).includes("Alert: skipped (cooldown)") &&
+    renderLastDecisionMessage(lastDecisionView).includes("Note: operator follow-up is required"),
+  "Rendered last-decision message should explain the verdict and cooldown skip.",
 );
 
 const hourlyHealthView = buildHourlyHealthView({
@@ -159,6 +161,7 @@ assertEqual(
   "Hourly health should count recent setup-blocked cycles.",
 );
 assert(
-  renderHourlyHealthMessage(hourlyHealthView).includes("Latest market issue: Timeout while calling Upbit."),
-  "Rendered hourly health should surface the latest market-data issue.",
+  renderHourlyHealthMessage(hourlyHealthView).includes("Latest verdict: action needed") &&
+    renderHourlyHealthMessage(hourlyHealthView).includes("Latest market issue: Timeout while calling Upbit."),
+  "Rendered hourly health should surface the latest verdict and market-data issue.",
 );

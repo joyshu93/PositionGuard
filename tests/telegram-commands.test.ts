@@ -461,3 +461,36 @@ assert(
   }).includes("ACTION NEEDED: BTC risk review is needed"),
   "Risk-review alerts should render a clear coaching headline without execution language.",
 );
+
+assert(
+  buildActionNeededAlertText({
+    chatId: 200,
+    reason: "ENTRY_REVIEW_REQUIRED",
+    asset: "BTC",
+    summary: "BTC structure supports a conservative spot entry review.",
+    nextStep: "Keep it staged, confirm the invalidation level first, and avoid chasing the upper end of the range.",
+  }).includes("ACTION NEEDED: BTC entry review is needed"),
+  "Entry-review alerts should render a clear non-execution headline.",
+);
+
+assert(
+  buildActionNeededAlertText({
+    chatId: 200,
+    reason: "ADD_BUY_REVIEW_REQUIRED",
+    asset: "ETH",
+    summary: "ETH pullback may justify a staged add-buy review.",
+    nextStep: "Only consider it if the invalidation level is clear and the pullback is not turning into breakdown.",
+  }).includes("ACTION NEEDED: ETH add-buy review is needed"),
+  "Add-buy review alerts should render a clear non-execution headline.",
+);
+
+assert(
+  buildActionNeededAlertText({
+    chatId: 200,
+    reason: "REDUCE_REVIEW_REQUIRED",
+    asset: "BTC",
+    summary: "BTC structure is weakening; review partial reduction or exit plan.",
+    nextStep: "Review the invalidation level before deciding whether to reduce or step aside.",
+  }).includes("ACTION NEEDED: BTC reduce review is needed"),
+  "Reduce-review alerts should render a clear non-execution headline.",
+);

@@ -10,6 +10,7 @@ This repository is intentionally in an MVP scaffold stage. The current goal is t
 - A Cloudflare Workers + D1 modular monolith scaffold
 - A public Upbit market-data consumer
 - A stateful decision-context builder and conservative rule-based coaching engine
+- A record-only coach that can surface conservative entry-review, add-buy-review, and reduce-review guidance
 
 ## What This Project Is Not
 
@@ -223,7 +224,9 @@ The repository now implements a temporary alert contract for explicit `ACTION_NE
 
 - alert only when the user needs a clear manual correction or setup completion
 - alert for repeated public market snapshot failures only after several consecutive hourly failures for an existing recorded position
-- alert when recorded spot structure weakens enough that invalidation, cash risk, and recorded position size need review
+- alert when structure supports a conservative spot entry review for a tracked asset with cash and no recorded inventory
+- alert when an existing spot position plus remaining cash supports a staged add-buy review without obvious breakdown
+- alert when recorded spot structure weakens enough that invalidation, cash risk, and recorded position size need a reduction or exit review
 - suppress repeated alerts for the same reason within a cooldown window
 - respect sleep mode strictly
 - prefer silence over low-confidence or noisy notifications
@@ -275,6 +278,7 @@ Current behavior:
 - `/hourlyhealth` inspects recent hourly processing health such as market-data failures, cooldown skips, sleep suppressions, and setup blocks
 - `/sleep on` and `/sleep off` toggle alert quiet mode
 - `/lastalert` inspects the most recent sent `ACTION_NEEDED` alert snapshot and its cooldown window
+- decision summaries may now explicitly say `entry review`, `add-buy review`, or `partial reduction / exit plan review`, but they always remain non-execution coaching language
 
 Any future buy/sell-related command must be record-only and must not execute trades.
 
@@ -305,6 +309,14 @@ This remains a manual record system. It does not sync balances or execute orders
 
 Decision outputs are structured as coaching summaries and reasons, and the current engine stays conservative and record-only. It summarizes simple 1h / 4h / 1d trend direction, recent range location, recorded average-entry profit/loss direction, and explicit invalidation-risk checks. It still prefers `SETUP_INCOMPLETE` / `INSUFFICIENT_DATA` / `NO_ACTION` when information is missing or structure is quiet, and keeps `ACTION_NEEDED` narrow for explicit manual correction, repeated market-data failure, or urgent risk/invalidation review.
 
+Current coaching behavior is intentionally narrow and rule-based:
+
+- `entry review`: possible only when a tracked asset has no recorded spot inventory, cash is available, higher timeframe structure is not broken, and current price is not already chasing the upper range
+- `add-buy review`: possible only when a recorded spot position exists, cash remains available, higher timeframe structure is still intact, and the current location looks more like a pullback than a chase
+- `reduce review`: possible when drawdown, lower-range pressure, and higher timeframe weakness line up strongly enough that invalidation-first review is needed
+
+None of these messages execute anything. They remain coaching-only, scenario-based, and always preserve the record-only boundary.
+
 ## Roadmap
 
 1. Add optional richer onboarding shortcuts beyond the current lightweight inline guidance.
@@ -327,4 +339,7 @@ The current MVP engine uses those candles for simple, inspectable structure anal
 - recent high/low range context
 - current price location inside the recent range
 - recorded average-entry profit/loss direction
-- explicit invalidation/risk-review checks for existing spot positions
+- explicit support-break / invalidation checks
+- cash-on-record checks for entry review and add-buy review eligibility
+
+The current engine does not use an external TA library and does not currently rely on SMA, EMA, RSI, or MACD. Its active inputs are public ticker price, recent candle structure, range location, tracked cash, recorded quantity, and recorded average entry.

@@ -85,14 +85,17 @@ Decision summaries and reasons should read like conservative coaching, not execu
 - `reasons` should explain setup, missing data, structure, invalidation, or risk in plain language.
 - `ACTION_NEEDED` should stay narrow and only cover manual correction, contradictory state, repeated operational failure, or clear invalidation/risk escalation.
 - The rule-based engine may use `ACTION_NEEDED` directly for risk review when structure weakens materially, while the temporary alert policy remains available for setup and operational failures.
+- The rule-based engine may also use `ACTION_NEEDED` for conservative `entry review` or `add-buy review` coaching when structure is constructive and the setup is not chasing price.
 - `NO_ACTION` should remain explicit that no order was executed and no order is being placed.
-- Avoid buy/sell language unless it is explicitly framed as record-only commentary.
+- Direct phrases such as `entry review`, `add-buy review`, `reduce review`, or `exit plan review` are allowed only when they are explicitly framed as record-only coaching.
 
 ## Temporary Alert Policy
 `ACTION_NEEDED` is intentionally narrow and temporary. It should only be used for explicit, inspectable cases such as:
 - incomplete user setup that requires manual cash or tracked-asset position input
 - repeated public market snapshot failure for an existing position after several consecutive hourly failures
 - clearly contradictory stored state that the user must correct
+- constructive no-position structure with available cash that justifies a conservative staged entry review
+- constructive pullback structure for an existing spot position with available cash that justifies a staged add-buy review
 - clear structure weakening that warrants invalidation, cash-risk, or recorded-size review
 
 Notification behavior under this contract should remain conservative:
@@ -131,7 +134,15 @@ The current MVP engine may summarize:
 - recent range high/low context
 - whether current price is pressing the lower, middle, or upper part of that range
 - whether the recorded average entry is in profit or drawdown
+- whether available cash exists for a first entry review or a staged add-buy review
 - whether invalidation/risk review is becoming urgent for an existing spot position
+
+The current MVP engine does not rely on external TA libraries. Its active rule inputs are:
+- public ticker price
+- 1h / 4h / 1d normalized candles
+- simple trend direction derived from recent candle closes
+- recent range location and support-break checks
+- recorded cash, quantity, and average entry price
 
 ## Design Constraints
 - Keep domain types explicit and serializable.

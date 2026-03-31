@@ -63,7 +63,11 @@ export type TelegramTrackedAssetsSelection = "BTC" | "ETH" | "BOTH";
 export type TelegramActionNeededReason =
   | "SETUP_INCOMPLETE"
   | "MISSING_MARKET_DATA"
-  | "INVALID_STORED_STATE";
+  | "INVALID_STORED_STATE"
+  | "RISK_REVIEW_REQUIRED"
+  | "ENTRY_REVIEW_REQUIRED"
+  | "ADD_BUY_REVIEW_REQUIRED"
+  | "REDUCE_REVIEW_REQUIRED";
 
 export interface TelegramUserProfile {
   telegramUserId: number;

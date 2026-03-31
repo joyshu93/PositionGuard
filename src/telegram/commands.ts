@@ -12,6 +12,7 @@ import type {
 } from './types.js';
 import { formatValidationErrors, validatePositionInput } from '../validation.js';
 import { parseCashAmount, parsePositionArgs, parseSleepModeArg, parseTelegramCallbackAction } from './parser.js';
+import { describeDecisionVerdict } from '../operator-visibility.js';
 
 export function routeCommand(context: TelegramCommandContext, deps: TelegramRouterDependencies): Promise<TelegramOutgoingAction[]> {
   const bootstrap = deps.stateStore?.upsertUserState(context.profile);
@@ -522,7 +523,7 @@ function renderHourlyHealthSnapshot(
     `Tracked assets: ${formatTrackedAssets(snapshot.trackedAssets)}`,
     `Readiness: ${snapshot.readiness.isReady ? 'ready' : 'blocked'} | cash: ${snapshot.readiness.hasCashRecord ? 'yes' : 'no'} | positions: ${formatTrackedAssets(snapshot.readiness.readyPositionAssets)}`,
     `Missing: ${formatNextSteps(snapshot.readiness.missingItems)}`,
-    `Last run: ${snapshot.lastRunAt ? formatCompactTimestamp(snapshot.lastRunAt) : 'none'} | status: ${snapshot.lastDecisionStatus ?? 'none'}`,
+    `Last run: ${snapshot.lastRunAt ? formatCompactTimestamp(snapshot.lastRunAt) : 'none'} | status: ${snapshot.lastDecisionStatus ?? 'none'} | verdict: ${describeDecisionVerdict(snapshot.lastDecisionStatus)}`,
     `Market data: ${snapshot.marketDataStatus ?? 'none'} | failures: ${snapshot.recentMarketFailureCount} | latest issue: ${snapshot.latestMarketFailureMessage ? truncateText(snapshot.latestMarketFailureMessage, 100) : 'none'}`,
     `Suppression: cooldown ${snapshot.recentCooldownSkipCount} | sleep ${snapshot.recentSleepSuppressionCount} | setup ${snapshot.recentSetupBlockedCount}`,
     `Latest alert: ${latestNotification}`,
@@ -554,10 +555,11 @@ function formatNumber(value: number): string {
 
 function formatDecisionLine(line: TelegramLastDecisionSnapshot['lines'][number]): string {
   return [
-    `${line.asset}: ${line.status}`,
+    `${line.asset}: ${describeDecisionVerdict(line.status)}`,
+    `status ${line.status}`,
     `${line.alertOutcome}${line.suppressedBy ? ` (${line.suppressedBy})` : ''}`,
-    formatCompactTimestamp(line.createdAt),
-    truncateText(line.summary, 90),
+    `when ${formatCompactTimestamp(line.createdAt)}`,
+    `summary ${truncateText(line.summary, 90)}`,
   ].join(' | ');
 }
 
@@ -575,7 +577,7 @@ function truncateText(value: string, limit: number): string {
     return value;
   }
 
-  return `${value.slice(0, Math.max(0, limit - 1)).trimEnd()}¡¦`;
+  return `${value.slice(0, Math.max(0, limit - 3)).trimEnd()}...`;
 }
 
 export interface TelegramActionNeededAlertInput {
@@ -616,6 +618,22 @@ function formatActionNeededHeadline(
 
   if (reason === 'MISSING_MARKET_DATA') {
     return `${assetLabel} market snapshot is unavailable`;
+  }
+
+  if (reason === 'RISK_REVIEW_REQUIRED') {
+    return `${assetLabel} risk review is needed`;
+  }
+
+  if (reason === 'ENTRY_REVIEW_REQUIRED') {
+    return `${assetLabel} entry review is needed`;
+  }
+
+  if (reason === 'ADD_BUY_REVIEW_REQUIRED') {
+    return `${assetLabel} add-buy review is needed`;
+  }
+
+  if (reason === 'REDUCE_REVIEW_REQUIRED') {
+    return `${assetLabel} reduce review is needed`;
   }
 
   return `${assetLabel} stored state needs correction`;

@@ -103,7 +103,11 @@ export type DecisionStatus =
 export type ActionNeededReason =
   | "COMPLETE_SETUP"
   | "INVALID_RECORDED_STATE"
-  | "MARKET_DATA_UNAVAILABLE";
+  | "MARKET_DATA_UNAVAILABLE"
+  | "RISK_REVIEW_REQUIRED"
+  | "ENTRY_REVIEW_REQUIRED"
+  | "ADD_BUY_REVIEW_REQUIRED"
+  | "REDUCE_REVIEW_REQUIRED";
 
 export interface ActionNeededAlert {
   reason: ActionNeededReason;
