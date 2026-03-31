@@ -237,7 +237,7 @@ export class UpbitClient {
   private readonly baseUrl: string;
 
   constructor(options: UpbitClientOptions = {}) {
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
     this.baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, "");
   }
 
