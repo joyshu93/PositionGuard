@@ -8,7 +8,8 @@ At this stage, the repository may implement:
 - typed decision input and output contracts
 - decision-context assembly
 - placeholder readiness checks
-- conservative stub statuses
+- conservative rule-based coaching summaries and reasons
+- simple market-structure summaries for `1h`, `4h`, and `1d`
 - a temporary `ACTION_NEEDED` alert contract for explicit operational cases only
 - persistence for decision logs
 
@@ -23,7 +24,7 @@ At this stage, the repository must not implement:
 2. Fetch public market context for supported assets.
 3. Normalize data into internal domain types.
 4. Assemble a decision context.
-5. Run a stub decision engine.
+5. Run the conservative rule-based decision engine.
 6. Apply the temporary `ACTION_NEEDED` policy for explicit operational cases only.
 7. Evaluate notification delivery with cooldown, sleep-mode, and chat-id suppression.
 8. Store a structured decision log with hourly diagnostics.
@@ -77,11 +78,22 @@ Allowed MVP statuses:
 
 Future statuses may later include scenario or management categories, but they should not be added until real strategy logic exists.
 
+## Narrative Contract
+Decision summaries and reasons should read like conservative coaching, not execution guidance.
+
+- `summary` should give a short, explicit coaching takeaway.
+- `reasons` should explain setup, missing data, structure, invalidation, or risk in plain language.
+- `ACTION_NEEDED` should stay narrow and only cover manual correction, contradictory state, repeated operational failure, or clear invalidation/risk escalation.
+- The rule-based engine may use `ACTION_NEEDED` directly for risk review when structure weakens materially, while the temporary alert policy remains available for setup and operational failures.
+- `NO_ACTION` should remain explicit that no order was executed and no order is being placed.
+- Avoid buy/sell language unless it is explicitly framed as record-only commentary.
+
 ## Temporary Alert Policy
 `ACTION_NEEDED` is intentionally narrow and temporary. It should only be used for explicit, inspectable cases such as:
 - incomplete user setup that requires manual cash or tracked-asset position input
 - repeated public market snapshot failure for an existing position after several consecutive hourly failures
 - clearly contradictory stored state that the user must correct
+- clear structure weakening that warrants invalidation, cash-risk, or recorded-size review
 
 Notification behavior under this contract should remain conservative:
 - prefer silence over repeated or low-confidence alerts
@@ -92,7 +104,7 @@ Notification behavior under this contract should remain conservative:
 
 Operator visibility should stay read-only and concise:
 - `/lastdecision` should summarize the latest decision status, summary, created time, and alert outcome
-- `/hourlyhealth` should summarize cooldown skips, sleep suppression, setup blocks, and repeated market-data failures
+- `/hourlyhealth` should summarize the latest verdict, cooldown skips, sleep suppression, setup blocks, and repeated market-data failures
 - `/lastalert` should summarize the most recent sent `ACTION_NEEDED` alert snapshot and cooldown window
 - none of these surfaces should imply trade execution or discretionary authority
 
@@ -113,6 +125,13 @@ Each decision log currently captures:
   - market-data availability and consecutive failure count
   - base decision status versus final decision status
   - notification eligibility, sent/skipped outcome, suppression reason, cooldown key, and cooldown window
+
+The current MVP engine may summarize:
+- 1h / 4h / 1d trend direction
+- recent range high/low context
+- whether current price is pressing the lower, middle, or upper part of that range
+- whether the recorded average entry is in profit or drawdown
+- whether invalidation/risk review is becoming urgent for an existing spot position
 
 ## Design Constraints
 - Keep domain types explicit and serializable.

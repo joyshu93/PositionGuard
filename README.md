@@ -1,6 +1,6 @@
 # PositionGuard
 
-PositionGuard is a Telegram-based BTC/ETH spot position coach bot. It is designed to help a user track manually reported cash and position state, combine that with public Upbit quotation data, and prepare structured decision context for future coaching logic.
+PositionGuard is a Telegram-based BTC/ETH spot position coach bot. It is designed to help a user track manually reported cash and position state, combine that with public Upbit quotation data, and produce conservative rule-based coaching outputs.
 
 This repository is intentionally in an MVP scaffold stage. The current goal is to build the safe, replaceable foundation for a future position coach, not the final strategy.
 
@@ -9,7 +9,7 @@ This repository is intentionally in an MVP scaffold stage. The current goal is t
 - A Telegram webhook bot for BTC and ETH spot investors
 - A Cloudflare Workers + D1 modular monolith scaffold
 - A public Upbit market-data consumer
-- A stateful decision-context builder for future coaching logic
+- A stateful decision-context builder and conservative rule-based coaching engine
 
 ## What This Project Is Not
 
@@ -27,7 +27,7 @@ This repository is intentionally in an MVP scaffold stage. The current goal is t
 - `src/upbit.ts` contains public Upbit quotation and candle normalization.
 - `src/telegram.ts` owns Telegram webhook parsing and routing.
 - `src/db/*` owns D1 persistence and operator-visibility queries.
-- `src/decision/*` owns decision contracts, readiness-aware context assembly, and the stub engine.
+- `src/decision/*` owns decision contracts, readiness-aware context assembly, market-structure summarization, and the conservative MVP coaching engine.
 - `migrations/` holds D1 schema migrations.
 
 The design is modular monolith by intent: adapters are isolated, domain types stay pure, and the future decision engine can be swapped in without rewiring the whole project.
@@ -199,12 +199,12 @@ All of these remain record-only. No order execution, private exchange access, or
 
 ## Cron Setup
 
-The hourly decision scaffold is intended to run from a Cloudflare scheduled trigger. It should:
+The hourly decision cycle is intended to run from a Cloudflare scheduled trigger. It should:
 
 - load user-reported state
 - fetch public market data
 - assemble decision context
-- run the stub decision engine
+- run the conservative rule-based decision engine
 - persist a decision log
 - evaluate the temporary `ACTION_NEEDED` policy
 - record sent or skipped notification events when that policy applies
@@ -223,6 +223,7 @@ The repository now implements a temporary alert contract for explicit `ACTION_NE
 
 - alert only when the user needs a clear manual correction or setup completion
 - alert for repeated public market snapshot failures only after several consecutive hourly failures for an existing recorded position
+- alert when recorded spot structure weakens enough that invalidation, cash risk, and recorded position size need review
 - suppress repeated alerts for the same reason within a cooldown window
 - respect sleep mode strictly
 - prefer silence over low-confidence or noisy notifications
@@ -232,8 +233,8 @@ Current operator visibility surface:
 
 - `/lastalert` shows the most recent sent `ACTION_NEEDED` alert snapshot for the current user
 - `/status` includes tracked assets, sleep mode, setup readiness, missing next steps, and recent alert summaries when available
-- `/lastdecision` shows the most recent hourly decision plus whether the alert was sent, skipped, or not applicable
-- `/hourlyhealth` shows a compact recent hourly health summary including market-data failures and suppression counts
+- `/lastdecision` shows the latest tracked-asset decision line per tracked asset, including verdict, summary, time, and alert outcome
+- `/hourlyhealth` shows a compact recent hourly health summary including the latest verdict, market-data failures, and suppression counts
 
 This is still not a final decision engine, and it is not an execution path.
 
@@ -270,7 +271,7 @@ Current behavior:
 - `/status` marks readiness complete only when cash plus the selected tracked asset records are present
 - `/setcash <amount>` records available cash only
 - `/setposition <BTC|ETH> <quantity> <average-entry-price>` records BTC/ETH spot state only
-- `/lastdecision` inspects the latest hourly decision status, summary, time, and alert outcome
+- `/lastdecision` inspects the latest tracked-asset hourly decision lines, including verdict, summary, time, and alert outcome
 - `/hourlyhealth` inspects recent hourly processing health such as market-data failures, cooldown skips, sleep suppressions, and setup blocks
 - `/sleep on` and `/sleep off` toggle alert quiet mode
 - `/lastalert` inspects the most recent sent `ACTION_NEEDED` alert snapshot and its cooldown window
@@ -295,20 +296,22 @@ This remains a manual record system. It does not sync balances or execute orders
 - No authenticated exchange API usage
 - No exchange key storage
 - No live account sync
-- No final decision engine yet
+- No final discretionary decision engine
 - No LLM-based judgment in this stage
 - No support for markets beyond BTC and ETH spot
 - No broad notification engine; only the temporary `ACTION_NEEDED` contract is implemented for narrow alerting and cooldown-based suppression
 - Onboarding is intentionally lightweight; inline buttons guide setup, but cash and position values are still entered with commands
 - `/lastalert`, `/lastdecision`, and `/hourlyhealth` are user-scoped inspection tools, not a global admin console
 
+Decision outputs are structured as coaching summaries and reasons, and the current engine stays conservative and record-only. It summarizes simple 1h / 4h / 1d trend direction, recent range location, recorded average-entry profit/loss direction, and explicit invalidation-risk checks. It still prefers `SETUP_INCOMPLETE` / `INSUFFICIENT_DATA` / `NO_ACTION` when information is missing or structure is quiet, and keeps `ACTION_NEEDED` narrow for explicit manual correction, repeated market-data failure, or urgent risk/invalidation review.
+
 ## Roadmap
 
 1. Add optional richer onboarding shortcuts beyond the current lightweight inline guidance.
-2. Refine cooldown windows and notification inspection now that basic `ACTION_NEEDED` delivery exists.
-3. Add richer public market structure summaries for `1h`, `4h`, and `1d`.
+2. Refine cooldown windows and notification inspection now that `ACTION_NEEDED` delivery exists.
+3. Refine the current rule-based coaching thresholds without drifting into opaque scoring or noisy TA sprawl.
 4. Expose deeper decision-log filtering if operator visibility needs to grow later.
-5. Replace the stub decision engine with a real scenario-based engine later.
+5. Keep `ACTION_NEEDED` narrow, conservative, and non-execution oriented as the engine matures.
 
 ## Notes On Market Data
 
@@ -318,4 +321,10 @@ The Upbit client normalizes public quotation responses into internal types and s
 - 4 hours via `minutes/240`
 - daily via `days`
 
-This keeps the data layer simple now and leaves room for richer structural analysis later.
+The current MVP engine uses those candles for simple, inspectable structure analysis only:
+
+- trend direction on `1h`, `4h`, and `1d`
+- recent high/low range context
+- current price location inside the recent range
+- recorded average-entry profit/loss direction
+- explicit invalidation/risk-review checks for existing spot positions

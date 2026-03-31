@@ -1,4 +1,4 @@
-import { routeCommand } from "../src/telegram/commands.js";
+import { buildActionNeededAlertText, routeCommand } from "../src/telegram/commands.js";
 import type {
   TelegramCommandContext,
   TelegramInspectionProvider,
@@ -359,7 +359,9 @@ if (lastDecisionAction && lastDecisionAction.kind === "sendMessage") {
 
 assert(
   lastDecisionText.includes("Last decision:") &&
-    lastDecisionText.includes("BTC: ACTION_NEEDED") &&
+    lastDecisionText.includes("Tracked assets: BTC, ETH") &&
+    lastDecisionText.includes("status ACTION_NEEDED") &&
+    lastDecisionText.includes("summary Manual setup is incomplete.") &&
     lastDecisionText.includes("Operational only. No trade was executed."),
   "/lastdecision should render a compact operational summary.",
 );
@@ -385,6 +387,7 @@ if (hourlyHealthAction && hourlyHealthAction.kind === "sendMessage") {
 
 assert(
   hourlyHealthText.includes("Hourly health:") &&
+    hourlyHealthText.includes("verdict: action needed") &&
     hourlyHealthText.includes("Market data: fetch_failure") &&
     hourlyHealthText.includes("Suppression: cooldown 2 | sleep 1 | setup 4"),
   "/hourlyhealth should render compact operational health details.",
@@ -446,4 +449,15 @@ assert(
   invalidAction?.kind === "sendMessage" &&
     invalidActionText.includes("Average entry price must be 0 when quantity is 0."),
   "Invalid setposition input should return a Telegram-friendly validation error.",
+);
+
+assert(
+  buildActionNeededAlertText({
+    chatId: 200,
+    reason: "RISK_REVIEW_REQUIRED",
+    asset: "BTC",
+    summary: "BTC structure is weakening; review invalidation and cash risk now.",
+    nextStep: "Review the invalidation level and whether the recorded spot size still fits your plan.",
+  }).includes("ACTION NEEDED: BTC risk review is needed"),
+  "Risk-review alerts should render a clear coaching headline without execution language.",
 );
