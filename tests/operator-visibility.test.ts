@@ -29,6 +29,12 @@ const cooldownDecision: DecisionLogRecord = {
         sent: false,
         suppressedBy: "cooldown",
       },
+      reminderState: {
+        eligible: true,
+        sent: false,
+        suppressedBy: "cooldown",
+        repeatedSignalCount: 2,
+      },
       decisionDetails: {
         regime: "PULLBACK_IN_UPTREND",
         triggerState: "CONFIRMED",
@@ -60,6 +66,12 @@ const marketFailureDecision: DecisionLogRecord = {
         sent: false,
         suppressedBy: null,
       },
+      reminderState: {
+        eligible: false,
+        sent: false,
+        suppressedBy: "unsupported_reason",
+        repeatedSignalCount: 0,
+      },
       decisionDetails: {
         regime: "BREAKDOWN_RISK",
         triggerState: "RISK_OFF",
@@ -88,6 +100,12 @@ const setupBlockedDecision: DecisionLogRecord = {
       notificationState: {
         sent: false,
         suppressedBy: null,
+      },
+      reminderState: {
+        eligible: false,
+        sent: false,
+        suppressedBy: "unsupported_reason",
+        repeatedSignalCount: 0,
       },
       decisionDetails: {
         regime: null,
@@ -184,6 +202,7 @@ assertEqual(
 assert(
   renderHourlyHealthMessage(hourlyHealthView).includes("Latest verdict: action needed") &&
     renderHourlyHealthMessage(hourlyHealthView).includes("Latest structure: regime PULLBACK_IN_UPTREND | trigger CONFIRMED | invalidation CLEAR") &&
+    renderHourlyHealthMessage(hourlyHealthView).includes("Latest reminder: eligible yes | sent no | repeated 2 | suppressed cooldown") &&
     renderHourlyHealthMessage(hourlyHealthView).includes("Latest market issue: Timeout while calling Upbit."),
   "Rendered hourly health should surface the latest verdict and market-data issue.",
 );

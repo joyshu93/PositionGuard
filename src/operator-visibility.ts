@@ -27,6 +27,10 @@ export interface HourlyHealthView {
   latestRegime: string | null;
   latestTriggerState: string | null;
   latestInvalidationState: string | null;
+  latestReminderEligible: boolean | null;
+  latestReminderSent: boolean | null;
+  latestReminderSuppressedBy: string | null;
+  latestReminderRepeatedSignalCount: number | null;
 }
 
 export function buildLastDecisionView(
@@ -90,6 +94,10 @@ export function buildHourlyHealthView(input: {
     latestRegime: getLatestDecisionDetail(latestDecision, "regime"),
     latestTriggerState: getLatestDecisionDetail(latestDecision, "triggerState"),
     latestInvalidationState: getLatestDecisionDetail(latestDecision, "invalidationState"),
+    latestReminderEligible: getLatestReminderFlag(latestDecision, "eligible"),
+    latestReminderSent: getLatestReminderFlag(latestDecision, "sent"),
+    latestReminderSuppressedBy: getLatestReminderSuppressedBy(latestDecision),
+    latestReminderRepeatedSignalCount: getLatestReminderRepeatedSignalCount(latestDecision),
   };
 }
 
@@ -123,6 +131,7 @@ export function renderHourlyHealthMessage(view: HourlyHealthView): string {
     `Recent sleep suppressions: ${view.recentSleepSuppressionCount}`,
     `Recent setup-blocked cycles: ${view.recentSetupBlockedCount}`,
     `Latest structure: regime ${view.latestRegime ?? "n/a"} | trigger ${view.latestTriggerState ?? "n/a"} | invalidation ${view.latestInvalidationState ?? "n/a"}`,
+    `Latest reminder: eligible ${formatBoolean(view.latestReminderEligible)} | sent ${formatBoolean(view.latestReminderSent)} | repeated ${view.latestReminderRepeatedSignalCount ?? "n/a"}${view.latestReminderSuppressedBy ? ` | suppressed ${view.latestReminderSuppressedBy}` : ""}`,
     `Latest market issue: ${view.latestMarketFailureMessage ?? "none"}`,
     "Operational only. No trade was executed.",
   ].join("\n");
@@ -215,6 +224,12 @@ function getDiagnostics(
         sent?: unknown;
         suppressedBy?: unknown;
       };
+      reminderState?: {
+        eligible?: unknown;
+        sent?: unknown;
+        suppressedBy?: unknown;
+        repeatedSignalCount?: unknown;
+      };
       decisionDetails?: {
         regime?: unknown;
         triggerState?: unknown;
@@ -240,6 +255,12 @@ function getDiagnostics(
       sent?: unknown;
       suppressedBy?: unknown;
     };
+    reminderState?: {
+      eligible?: unknown;
+      sent?: unknown;
+      suppressedBy?: unknown;
+      repeatedSignalCount?: unknown;
+    };
     decisionDetails?: {
       regime?: unknown;
       triggerState?: unknown;
@@ -261,4 +282,34 @@ function getLatestDecisionDetail(
 ): string | null {
   const value = getDiagnostics(decision?.context)?.decisionDetails?.[key];
   return typeof value === "string" ? value : null;
+}
+
+function getLatestReminderFlag(
+  decision: DecisionLogRecord | null,
+  key: "eligible" | "sent",
+): boolean | null {
+  const value = getDiagnostics(decision?.context)?.reminderState?.[key];
+  return typeof value === "boolean" ? value : null;
+}
+
+function getLatestReminderSuppressedBy(
+  decision: DecisionLogRecord | null,
+): string | null {
+  const value = getDiagnostics(decision?.context)?.reminderState?.suppressedBy;
+  return typeof value === "string" ? value : null;
+}
+
+function getLatestReminderRepeatedSignalCount(
+  decision: DecisionLogRecord | null,
+): number | null {
+  const value = getDiagnostics(decision?.context)?.reminderState?.repeatedSignalCount;
+  return typeof value === "number" ? value : null;
+}
+
+function formatBoolean(value: boolean | null): string {
+  if (value === null) {
+    return "n/a";
+  }
+
+  return value ? "yes" : "no";
 }

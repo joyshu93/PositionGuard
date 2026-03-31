@@ -227,6 +227,9 @@ The repository now implements a temporary alert contract for explicit `ACTION_NE
 - alert when structure supports a conservative spot entry review for a tracked asset with cash and no recorded inventory
 - alert when an existing spot position plus remaining cash supports a staged add-buy review without obvious breakdown
 - alert when recorded spot structure weakens enough that invalidation, cash risk, and recorded position size need a reduction or exit review
+- keep the market-signal cooldown for those entry / add-buy / reduce alerts
+- add a separate `STATE_UPDATE_REMINDER` path when the same coaching signal repeats while the stored manual state stays unchanged
+- use that reminder to tell the user to refresh `/setposition` or `/setcash` if they already acted outside the bot
 - suppress repeated alerts for the same reason within a cooldown window
 - respect sleep mode strictly
 - prefer silence over low-confidence or noisy notifications
@@ -234,10 +237,10 @@ The repository now implements a temporary alert contract for explicit `ACTION_NE
 
 Current operator visibility surface:
 
-- `/lastalert` shows the most recent sent `ACTION_NEEDED` alert snapshot for the current user
+- `/lastalert` shows the most recent sent alert snapshot for the current user, including `STATE_UPDATE_REMINDER` when that is the latest sent alert
 - `/status` includes tracked assets, sleep mode, setup readiness, missing next steps, and recent alert summaries when available
 - `/lastdecision` shows the latest tracked-asset decision line per tracked asset, including verdict, summary, time, and alert outcome
-- `/hourlyhealth` shows a compact recent hourly health summary including the latest verdict, market-data failures, and suppression counts
+- `/hourlyhealth` shows a compact recent hourly health summary including the latest verdict, market-data failures, suppression counts, and latest reminder evaluation state
 
 This is still not a final decision engine, and it is not an execution path.
 
@@ -275,9 +278,9 @@ Current behavior:
 - `/setcash <amount>` records available cash only
 - `/setposition <BTC|ETH> <quantity> <average-entry-price>` records BTC/ETH spot state only
 - `/lastdecision` inspects the latest tracked-asset hourly decision lines, including verdict, summary, time, and alert outcome
-- `/hourlyhealth` inspects recent hourly processing health such as market-data failures, cooldown skips, sleep suppressions, and setup blocks
+- `/hourlyhealth` inspects recent hourly processing health such as market-data failures, cooldown skips, sleep suppressions, setup blocks, and the latest reminder evaluation
 - `/sleep on` and `/sleep off` toggle alert quiet mode
-- `/lastalert` inspects the most recent sent `ACTION_NEEDED` alert snapshot and its cooldown window
+- `/lastalert` inspects the most recent sent alert snapshot and its cooldown window, including state-update reminders when they were the latest alert
 - decision summaries may now explicitly say `entry review`, `add-buy review`, or `partial reduction / exit plan review`, but they always remain non-execution coaching language
 
 Any future buy/sell-related command must be record-only and must not execute trades.
@@ -317,6 +320,8 @@ Current coaching behavior is intentionally narrow and rule-based:
 - `sell review` / `exit plan review`: these phrases may appear inside reduce-side coaching when support has failed materially, but they remain coaching-only and non-execution framed
 
 None of these messages execute anything. They remain coaching-only, scenario-based, and always preserve the record-only boundary.
+
+Because the bot only sees stored manual state, a repeated market signal may later produce a separate state-update reminder. If you already bought, added, reduced, or sold outside the bot, update the record with `/setposition`. If your available cash changed, update it with `/setcash`.
 
 ## Roadmap
 
@@ -358,4 +363,10 @@ The current decision flow is:
 4. evaluate invalidation and risk
 5. produce conservative coaching wording and alert policy output
 
-Current operator visibility remains concise but now includes the latest regime, trigger state, and invalidation state in `/lastdecision` and `/hourlyhealth`. `/lastalert` remains a compact record of the most recent sent `ACTION_NEEDED` alert.
+Current operator visibility remains concise but now includes the latest regime, trigger state, invalidation state, and reminder evaluation in `/hourlyhealth`. `/lastalert` remains a compact record of the most recent sent alert, including state-update reminders when they were sent.
+
+The reminder layer is separate from the market-signal alert layer:
+
+1. entry / add-buy / reduce market alerts keep their existing cooldown behavior
+2. state-update reminders only appear when the same coaching signal repeats and the stored manual state has not changed
+3. reminder text focuses on refreshing `/setposition` and `/setcash`, not on repeating the same market explanation

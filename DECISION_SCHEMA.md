@@ -28,10 +28,11 @@ At this stage, the repository must not implement:
 6. Evaluate whether an entry, add-buy, or reduce setup is allowed.
 7. Evaluate lower-timeframe trigger confirmation.
 8. Evaluate invalidation and risk.
-6. Apply the temporary `ACTION_NEEDED` policy for explicit operational cases only.
-7. Evaluate notification delivery with cooldown, sleep-mode, and chat-id suppression.
-8. Store a structured decision log with hourly diagnostics.
-9. Store a notification event only when an `ACTION_NEEDED` evaluation produces a sent or recorded skipped outcome.
+9. Apply the temporary `ACTION_NEEDED` policy for explicit operational cases only.
+10. Evaluate market-signal alert delivery with cooldown, sleep-mode, and chat-id suppression.
+11. Evaluate a separate state-update reminder layer when the same signal repeats against unchanged manual state.
+12. Store a structured decision log with hourly diagnostics.
+13. Store notification events for both market-signal alerts and state-update reminders when they are sent or when an eligible reminder is explicitly suppressed.
 
 ## Decision Input Shape
 The future decision engine should receive a context object with these categories:
@@ -144,6 +145,7 @@ Decision summaries and reasons should read like conservative coaching, not execu
 - `ACTION_NEEDED` should stay narrow and only cover manual correction, contradictory state, repeated operational failure, or clear invalidation/risk escalation.
 - The rule-based engine may use `ACTION_NEEDED` directly for risk review when structure weakens materially, while the temporary alert policy remains available for setup and operational failures.
 - The rule-based engine may also use `ACTION_NEEDED` for conservative `entry review` or `add-buy review` coaching when structure is constructive and the setup is not chasing price.
+- A separate state-update reminder may be delivered later when the same `entry review`, `add-buy review`, or `reduce review` signal repeats while the stored manual state still looks unchanged.
 - `NO_ACTION` should remain explicit that no order was executed and no order is being placed.
 - Direct phrases such as `entry review`, `add-buy review`, `reduce review`, `sell review`, `invalidation review`, or `exit plan review` are allowed only when they are explicitly framed as record-only coaching.
 
@@ -162,6 +164,17 @@ Notification behavior under this contract should remain conservative:
 - respect sleep mode strictly
 - keep message text short, concrete, and record-oriented
 - expose recent alert state through lightweight debug inspection, such as `/lastalert`
+
+## Reminder Layer
+The reminder layer is separate from the market-signal alert layer.
+
+- reminder targets are limited to `ENTRY_REVIEW_REQUIRED`, `ADD_BUY_REVIEW_REQUIRED`, and `REDUCE_REVIEW_REQUIRED`
+- setup-incomplete and market-data-failure cycles are not reminder targets
+- reminder eligibility requires repeated identical signal reason for the same asset plus unchanged stored manual state
+- unchanged manual state is evaluated from user-reported cash, quantity, average entry price, and their reporting/update timestamps
+- reminder delivery has its own cooldown and must still respect sleep mode and missing-chat-id suppression
+- reminder text should focus on refreshing `/setposition` or `/setcash` if the user already acted outside the bot
+- reminder text must remain non-execution framed and keep `No trade was executed.`
 
 Operator visibility should stay read-only and concise:
 - `/lastdecision` should summarize the latest decision status, summary, created time, alert outcome, regime, trigger state, and invalidation state
@@ -186,6 +199,7 @@ Each decision log currently captures:
   - market-data availability and consecutive failure count
   - base decision status versus final decision status
   - notification eligibility, sent/skipped outcome, suppression reason, cooldown key, and cooldown window
+  - reminder repeated-signal count, unchanged-state evaluation, eligibility, sent/skipped outcome, suppression reason, and cooldown window
 
 The current MVP engine may summarize:
 - market regime on `1h` / `4h` / `1d`
@@ -217,6 +231,7 @@ The current alert reasons should stay narrow and explicit:
 - `ENTRY_REVIEW_REQUIRED`
 - `ADD_BUY_REVIEW_REQUIRED`
 - `REDUCE_REVIEW_REQUIRED`
+- `STATE_UPDATE_REMINDER`
 
 Different delivery policies may later be applied per reason, but the contract should remain stable and conservative.
 

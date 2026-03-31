@@ -12,7 +12,9 @@ import {
   runDecisionEngine,
 } from "./decision/index.js";
 import {
+  assessStateUpdateReminder,
   buildActionNeededAlertPlan,
+  buildStateUpdateReminderPlan,
   isActionNeededStatus,
 } from "./runtime-alerts.js";
 import { buildHourlyDiagnostics } from "./hourly-diagnostics.js";
@@ -119,6 +121,17 @@ async function processAssetCycle(
     decision,
     marketResult,
   });
+  const reminderState = await evaluateReminderState({
+    db: env.db,
+    telegramClient,
+    userState,
+    asset,
+    market,
+    context,
+    decision,
+    recentDecisionLogs,
+    primaryNotificationState: notificationState,
+  });
 
   return recordDecisionLog(env.db, {
     userId: userState.user.id,
@@ -138,9 +151,10 @@ async function processAssetCycle(
         consecutiveMarketFailures,
         notificationEligible,
         notificationState,
+        reminderState,
       }),
     }),
-    notificationSent: notificationState.sent,
+    notificationSent: notificationState.sent || reminderState.sent,
   });
 }
 
@@ -274,6 +288,158 @@ async function evaluateNotificationState(params: {
     reasonKey: plan.reasonKey,
     suppressedBy: null,
     cooldownUntil: plan.cooldownUntil,
+  };
+}
+
+async function evaluateReminderState(params: {
+  db: Env["DB"];
+  telegramClient: ReturnType<typeof createTelegramBotClient>;
+  userState: UserStateBundle;
+  asset: SupportedAsset;
+  market: SupportedMarket;
+  context: ReturnType<typeof buildDecisionContext>;
+  decision: {
+    status: string;
+    summary: string;
+    reasons: string[];
+    alert?: DecisionResult["alert"];
+  };
+  recentDecisionLogs: Array<{ decisionStatus: string; context: unknown }>;
+  primaryNotificationState: {
+    sent: boolean;
+    reasonKey: string | null;
+    suppressedBy: string | null;
+    cooldownUntil: string | null;
+  };
+}): Promise<{
+  eligible: boolean;
+  sent: boolean;
+  reasonKey: string | null;
+  suppressedBy: string | null;
+  cooldownUntil: string | null;
+  repeatedSignalCount: number;
+  stateChangedSinceLastSignal: boolean | null;
+  signalReason: string | null;
+}> {
+  const assessment = assessStateUpdateReminder({
+    decision: params.decision,
+    context: params.context,
+    asset: params.asset,
+    recentDecisionLogs: params.recentDecisionLogs,
+  });
+
+  const latestReminderEvent =
+    assessment.reasonKey === null
+      ? null
+      : await getLatestNotificationEventForUserAssetReason(
+          params.db,
+          params.userState.user.id,
+          params.asset,
+          assessment.reasonKey,
+        );
+
+  const plan = buildStateUpdateReminderPlan({
+    assessment,
+    asset: params.asset,
+    nowIso: new Date().toISOString(),
+    hasChatId: params.userState.user.telegramChatId !== null,
+    sleepModeEnabled: params.userState.user.sleepModeEnabled,
+    primaryAlertSent: params.primaryNotificationState.sent,
+    latestReminderNotification: latestReminderEvent
+      ? {
+          createdAt: latestReminderEvent.createdAt,
+          reasonKey: latestReminderEvent.reasonKey,
+        }
+      : null,
+  });
+
+  if (!plan.reasonKey || !plan.message) {
+    return {
+      eligible: plan.eligible,
+      sent: false,
+      reasonKey: null,
+      suppressedBy: plan.suppressionReason,
+      cooldownUntil: plan.cooldownUntil,
+      repeatedSignalCount: plan.repeatedSignalCount,
+      stateChangedSinceLastSignal: plan.stateChangedSinceLastSignal,
+      signalReason: plan.signalReason,
+    };
+  }
+
+  if (!plan.shouldSend) {
+    if (plan.eligible && shouldRecordSuppressedNotification(latestReminderEvent, new Date().toISOString())) {
+      await recordNotificationEvent(params.db, {
+        userId: params.userState.user.id,
+        asset: params.asset,
+        reasonKey: plan.reasonKey,
+        deliveryStatus: "SKIPPED",
+        eventType: "STATE_UPDATE_REMINDER",
+        cooldownUntil: plan.cooldownUntil,
+        suppressedBy: plan.suppressionReason,
+        payload: {
+          signalReason: plan.signalReason,
+          repeatedSignalCount: plan.repeatedSignalCount,
+          stateChangedSinceLastSignal: plan.stateChangedSinceLastSignal,
+          summary: params.decision.summary,
+        },
+      });
+    }
+
+    return {
+      eligible: plan.eligible,
+      sent: false,
+      reasonKey: plan.reasonKey,
+      suppressedBy: plan.suppressionReason,
+      cooldownUntil: plan.cooldownUntil,
+      repeatedSignalCount: plan.repeatedSignalCount,
+      stateChangedSinceLastSignal: plan.stateChangedSinceLastSignal,
+      signalReason: plan.signalReason,
+    };
+  }
+
+  if (!params.userState.user.telegramChatId) {
+    return {
+      eligible: plan.eligible,
+      sent: false,
+      reasonKey: plan.reasonKey,
+      suppressedBy: "missing_chat_id",
+      cooldownUntil: plan.cooldownUntil,
+      repeatedSignalCount: plan.repeatedSignalCount,
+      stateChangedSinceLastSignal: plan.stateChangedSinceLastSignal,
+      signalReason: plan.signalReason,
+    };
+  }
+
+  await params.telegramClient.sendMessage(
+    Number(params.userState.user.telegramChatId),
+    plan.message,
+  );
+
+  await recordNotificationEvent(params.db, {
+    userId: params.userState.user.id,
+    asset: params.asset,
+    reasonKey: plan.reasonKey,
+    deliveryStatus: "SENT",
+    eventType: "STATE_UPDATE_REMINDER",
+    cooldownUntil: plan.cooldownUntil,
+    payload: {
+      signalReason: plan.signalReason,
+      repeatedSignalCount: plan.repeatedSignalCount,
+      stateChangedSinceLastSignal: plan.stateChangedSinceLastSignal,
+      summary: params.decision.summary,
+    },
+    sentAt: new Date().toISOString(),
+  });
+
+  return {
+    eligible: plan.eligible,
+    sent: true,
+    reasonKey: plan.reasonKey,
+    suppressedBy: null,
+    cooldownUntil: plan.cooldownUntil,
+    repeatedSignalCount: plan.repeatedSignalCount,
+    stateChangedSinceLastSignal: plan.stateChangedSinceLastSignal,
+    signalReason: plan.signalReason,
   };
 }
 

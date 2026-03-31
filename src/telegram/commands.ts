@@ -526,6 +526,7 @@ function renderHourlyHealthSnapshot(
     `Last run: ${snapshot.lastRunAt ? formatCompactTimestamp(snapshot.lastRunAt) : 'none'} | status: ${snapshot.lastDecisionStatus ?? 'none'} | verdict: ${describeDecisionVerdict(snapshot.lastDecisionStatus)}`,
     `Market data: ${snapshot.marketDataStatus ?? 'none'} | failures: ${snapshot.recentMarketFailureCount} | latest issue: ${snapshot.latestMarketFailureMessage ? truncateText(snapshot.latestMarketFailureMessage, 100) : 'none'}`,
     `Structure: regime ${snapshot.latestRegime ?? 'n/a'} | trigger ${snapshot.latestTriggerState ?? 'n/a'} | invalidation ${snapshot.latestInvalidationState ?? 'n/a'}`,
+    `Reminder: eligible ${formatBoolean(snapshot.latestReminderEligible)} | sent ${formatBoolean(snapshot.latestReminderSent)} | repeated ${snapshot.latestReminderRepeatedSignalCount ?? 'n/a'}${snapshot.latestReminderSuppressedBy ? ` | suppressed ${snapshot.latestReminderSuppressedBy}` : ''}`,
     `Suppression: cooldown ${snapshot.recentCooldownSkipCount} | sleep ${snapshot.recentSleepSuppressionCount} | setup ${snapshot.recentSetupBlockedCount}`,
     `Latest alert: ${latestNotification}`,
     'Operational only. No trade was executed.',
@@ -665,6 +666,10 @@ function formatActionNeededHeadline(
     return `${assetLabel} reduce review is needed`;
   }
 
+  if (reason === 'STATE_UPDATE_REMINDER') {
+    return `${assetLabel} state update reminder is needed`;
+  }
+
   return `${assetLabel} stored state needs correction`;
 }
 
@@ -678,4 +683,12 @@ function answer(callbackQueryId: string, text?: string): TelegramOutgoingAction 
   return text
     ? { kind: 'answerCallbackQuery', callbackQueryId, text }
     : { kind: 'answerCallbackQuery', callbackQueryId };
+}
+
+function formatBoolean(value: boolean | null): string {
+  if (value === null) {
+    return 'n/a';
+  }
+
+  return value ? 'yes' : 'no';
 }

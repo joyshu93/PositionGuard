@@ -1,7 +1,9 @@
 import {
+  assessStateUpdateReminder,
   buildActionNeededAlertPlan,
   buildAlertReasonKey,
   buildActionNeededMessage,
+  buildStateUpdateReminderPlan,
   isWithinCooldown,
 } from "../src/runtime-alerts.js";
 import { buildDecisionContext } from "../src/decision/context.js";
@@ -235,4 +237,318 @@ assert(
     nextStep: "Use /setcash and /setposition to finish setup.",
   }).includes("record-only guidance"),
   "Telegram alert text should preserve the record-only boundary.",
+);
+
+const reminderContext = buildDecisionContext({
+  userState: {
+    ...incompleteSetupState,
+    user: {
+      ...incompleteSetupState.user,
+      trackedAssets: "BTC",
+      onboardingComplete: true,
+    },
+    positions: {
+      BTC: {
+        id: 20,
+        userId: 11,
+        asset: "BTC",
+        quantity: 0,
+        averageEntryPrice: 0,
+        reportedAt: "2026-01-01T00:00:00.000Z",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    },
+  },
+  asset: "BTC",
+  marketSnapshot: {
+    market: "KRW-BTC",
+    asset: "BTC",
+    ticker: {
+      market: "KRW-BTC",
+      tradePrice: 161,
+      changeRate: 0,
+      fetchedAt: "2026-01-01T01:00:00.000Z",
+    },
+    timeframes: {
+      "1h": { timeframe: "1h", candles: [] },
+      "4h": { timeframe: "4h", candles: [] },
+      "1d": { timeframe: "1d", candles: [] },
+    },
+  },
+  generatedAt: "2026-01-01T01:00:00.000Z",
+});
+
+const reminderDecision = {
+  status: "ACTION_NEEDED",
+  summary: "BTC structure supports a conservative spot entry review.",
+  reasons: ["Regime: pullback in uptrend."],
+  alert: {
+    reason: "ENTRY_REVIEW_REQUIRED" as const,
+    cooldownKey: "entry-review:11:BTC:four-hour-pullback",
+    message: "Action needed",
+  },
+};
+
+const repeatedSignalLog = {
+  decisionStatus: "ACTION_NEEDED",
+  context: {
+    context: {
+      accountState: {
+        availableCash: 1000000,
+        reportedAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+      positionState: {
+        quantity: 0,
+        averageEntryPrice: 0,
+        reportedAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    },
+    diagnostics: {
+      alertReason: "ENTRY_REVIEW_REQUIRED",
+    },
+  },
+};
+
+const changedStateSignalLog = {
+  decisionStatus: "ACTION_NEEDED",
+  context: {
+    context: {
+      accountState: {
+        availableCash: 500000,
+        reportedAt: "2025-12-31T00:00:00.000Z",
+        updatedAt: "2025-12-31T00:00:00.000Z",
+      },
+      positionState: {
+        quantity: 0,
+        averageEntryPrice: 0,
+        reportedAt: "2025-12-31T00:00:00.000Z",
+        updatedAt: "2025-12-31T00:00:00.000Z",
+      },
+    },
+    diagnostics: {
+      alertReason: "ENTRY_REVIEW_REQUIRED",
+    },
+  },
+};
+
+const entryReminderAssessment = assessStateUpdateReminder({
+  decision: reminderDecision,
+  context: reminderContext,
+  asset: "BTC",
+  recentDecisionLogs: [repeatedSignalLog],
+});
+
+assertEqual(
+  entryReminderAssessment.reminderEligible,
+  true,
+  "Repeated identical entry-review signals with unchanged manual state should become reminder-eligible.",
+);
+assertEqual(
+  entryReminderAssessment.repeatedSignalCount,
+  2,
+  "Reminder eligibility should count the current signal plus the prior repeated signal.",
+);
+
+const changedStateAssessment = assessStateUpdateReminder({
+  decision: reminderDecision,
+  context: reminderContext,
+  asset: "BTC",
+  recentDecisionLogs: [changedStateSignalLog],
+});
+
+assertEqual(
+  changedStateAssessment.reminderEligible,
+  false,
+  "Reminder should stay off when the user-reported state changed since the last repeated signal.",
+);
+assertEqual(
+  changedStateAssessment.stateChangedSinceLastSignal,
+  true,
+  "Reminder assessment should surface state-change detection explicitly.",
+);
+
+const reminderPlan = buildStateUpdateReminderPlan({
+  assessment: entryReminderAssessment,
+  asset: "BTC",
+  nowIso: "2026-01-01T10:00:00.000Z",
+  hasChatId: true,
+  sleepModeEnabled: false,
+  primaryAlertSent: false,
+  latestReminderNotification: null,
+});
+
+assertEqual(
+  reminderPlan.shouldSend,
+  true,
+  "Eligible reminder assessments should produce a sendable reminder plan.",
+);
+assert(
+  reminderPlan.message?.includes("/setposition") &&
+    reminderPlan.message?.includes("/setcash") &&
+    reminderPlan.message?.includes("No trade was executed.") &&
+    reminderPlan.message?.includes("stored manual state"),
+  "Reminder messages should point to manual state update commands and preserve non-execution framing.",
+);
+
+const reminderCooldownPlan = buildStateUpdateReminderPlan({
+  assessment: entryReminderAssessment,
+  asset: "BTC",
+  nowIso: "2026-01-01T12:00:00.000Z",
+  hasChatId: true,
+  sleepModeEnabled: false,
+  primaryAlertSent: false,
+  latestReminderNotification: {
+    createdAt: "2026-01-01T03:00:00.000Z",
+    reasonKey: entryReminderAssessment.reasonKey,
+  },
+});
+
+assertEqual(
+  reminderCooldownPlan.shouldSend,
+  false,
+  "Reminder cooldown should suppress repeated reminder delivery inside the separate reminder window.",
+);
+assertEqual(
+  reminderCooldownPlan.suppressionReason,
+  "cooldown",
+  "Reminder cooldown suppression should be explicit.",
+);
+
+const sleepReminderPlan = buildStateUpdateReminderPlan({
+  assessment: entryReminderAssessment,
+  asset: "BTC",
+  nowIso: "2026-01-01T10:00:00.000Z",
+  hasChatId: true,
+  sleepModeEnabled: true,
+  primaryAlertSent: false,
+  latestReminderNotification: null,
+});
+
+assertEqual(
+  sleepReminderPlan.suppressionReason,
+  "sleep_mode",
+  "Sleep mode should suppress reminder delivery as well.",
+);
+
+const missingChatReminderPlan = buildStateUpdateReminderPlan({
+  assessment: entryReminderAssessment,
+  asset: "BTC",
+  nowIso: "2026-01-01T10:00:00.000Z",
+  hasChatId: false,
+  sleepModeEnabled: false,
+  primaryAlertSent: false,
+  latestReminderNotification: null,
+});
+
+assertEqual(
+  missingChatReminderPlan.suppressionReason,
+  "missing_chat_id",
+  "Missing chat id should suppress reminder delivery as well.",
+);
+
+const setupReminderAssessment = assessStateUpdateReminder({
+  decision: {
+    status: "ACTION_NEEDED",
+    summary: "Manual setup is incomplete; waiting for user-reported inputs.",
+    reasons: ["Missing setup items: cash."],
+    alert: {
+      reason: "COMPLETE_SETUP" as const,
+      cooldownKey: "setup:11",
+      message: "Action needed",
+    },
+  },
+  context: reminderContext,
+  asset: "BTC",
+  recentDecisionLogs: [repeatedSignalLog],
+});
+
+assertEqual(
+  setupReminderAssessment.reminderEligible,
+  false,
+  "Setup-incomplete repeats should not be treated as state-update reminder targets.",
+);
+
+const marketDataReminderAssessment = assessStateUpdateReminder({
+  decision: {
+    status: "ACTION_NEEDED",
+    summary: "Public market context is unavailable for this cycle.",
+    reasons: ["The decision scaffold requires a normalized market snapshot."],
+    alert: {
+      reason: "MARKET_DATA_UNAVAILABLE" as const,
+      cooldownKey: "market-data:11:BTC",
+      message: "Action needed",
+    },
+  },
+  context: reminderContext,
+  asset: "BTC",
+  recentDecisionLogs: [repeatedSignalLog],
+});
+
+assertEqual(
+  marketDataReminderAssessment.reminderEligible,
+  false,
+  "Market-data failure repeats should not be treated as state-update reminder targets.",
+);
+
+const addBuyReminderAssessment = assessStateUpdateReminder({
+  decision: {
+    ...reminderDecision,
+    alert: {
+      reason: "ADD_BUY_REVIEW_REQUIRED" as const,
+      cooldownKey: "add-buy-review:11:BTC:four-hour-pullback",
+      message: "Action needed",
+    },
+  },
+  context: reminderContext,
+  asset: "BTC",
+  recentDecisionLogs: [
+    {
+      ...repeatedSignalLog,
+      context: {
+        ...repeatedSignalLog.context,
+        diagnostics: {
+          alertReason: "ADD_BUY_REVIEW_REQUIRED",
+        },
+      },
+    },
+  ],
+});
+
+assertEqual(
+  addBuyReminderAssessment.reminderEligible,
+  true,
+  "Repeated identical add-buy-review signals with unchanged manual state should become reminder-eligible.",
+);
+
+const reduceReminderAssessment = assessStateUpdateReminder({
+  decision: {
+    ...reminderDecision,
+    alert: {
+      reason: "REDUCE_REVIEW_REQUIRED" as const,
+      cooldownKey: "reduce-review:11:BTC:four-hour-break",
+      message: "Action needed",
+    },
+  },
+  context: reminderContext,
+  asset: "BTC",
+  recentDecisionLogs: [
+    {
+      ...repeatedSignalLog,
+      context: {
+        ...repeatedSignalLog.context,
+        diagnostics: {
+          alertReason: "REDUCE_REVIEW_REQUIRED",
+        },
+      },
+    },
+  ],
+});
+
+assertEqual(
+  reduceReminderAssessment.reminderEligible,
+  true,
+  "Repeated identical reduce-review signals with unchanged manual state should become reminder-eligible.",
 );

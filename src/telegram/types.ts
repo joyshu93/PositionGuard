@@ -67,7 +67,8 @@ export type TelegramActionNeededReason =
   | "RISK_REVIEW_REQUIRED"
   | "ENTRY_REVIEW_REQUIRED"
   | "ADD_BUY_REVIEW_REQUIRED"
-  | "REDUCE_REVIEW_REQUIRED";
+  | "REDUCE_REVIEW_REQUIRED"
+  | "STATE_UPDATE_REMINDER";
 
 export interface TelegramUserProfile {
   telegramUserId: number;
@@ -157,6 +158,10 @@ export interface TelegramHourlyHealthSnapshot {
   latestRegime: string | null;
   latestTriggerState: string | null;
   latestInvalidationState: string | null;
+  latestReminderEligible: boolean | null;
+  latestReminderSent: boolean | null;
+  latestReminderSuppressedBy: string | null;
+  latestReminderRepeatedSignalCount: number | null;
   latestNotification: {
     deliveryStatus: "SENT" | "SKIPPED";
     reasonKey: string | null;

@@ -103,6 +103,10 @@ const inspectionProvider: TelegramInspectionProvider = {
       latestRegime: "PULLBACK_IN_UPTREND",
       latestTriggerState: "CONFIRMED",
       latestInvalidationState: "CLEAR",
+      latestReminderEligible: true,
+      latestReminderSent: false,
+      latestReminderSuppressedBy: "cooldown",
+      latestReminderRepeatedSignalCount: 2,
       latestNotification: {
         deliveryStatus: "SENT",
         reasonKey: "btc-setup-incomplete",
@@ -320,9 +324,9 @@ const alertActions = await routeCommand(
     notificationProvider: {
       async getLastAlert() {
         return {
-          reason: "SETUP_INCOMPLETE",
-          summary: "Manual setup is incomplete; waiting for user-reported inputs.",
-          asset: null,
+          reason: "STATE_UPDATE_REMINDER",
+          summary: "PositionGuard is still seeing the same stored manual state.",
+          asset: "BTC",
           sentAt: "2026-01-01T03:00:00.000Z",
           cooldownUntil: "2026-01-01T09:00:00.000Z",
         };
@@ -343,6 +347,7 @@ if (alertAction && alertAction.kind === "sendMessage") {
 }
 
 assert(
+  alertText.includes("Reason: STATE_UPDATE_REMINDER") &&
   alertText.includes("Cooldown until: 2026-01-01 18:00:00 KST"),
   "/lastalert should expose cooldown visibility for debugging.",
 );
@@ -400,6 +405,7 @@ assert(
     hourlyHealthText.includes("verdict: action needed") &&
     hourlyHealthText.includes("Market data: fetch_failure") &&
     hourlyHealthText.includes("Structure: regime PULLBACK_IN_UPTREND | trigger CONFIRMED | invalidation CLEAR") &&
+    hourlyHealthText.includes("Reminder: eligible yes | sent no | repeated 2 | suppressed cooldown") &&
     hourlyHealthText.includes("Suppression: cooldown 2 | sleep 1 | setup 4"),
   "/hourlyhealth should render compact operational health details.",
 );
@@ -504,4 +510,15 @@ assert(
     nextStep: "Review the invalidation level before deciding whether to reduce or step aside.",
   }).includes("ACTION NEEDED: BTC reduce review is needed"),
   "Reduce-review alerts should render a clear non-execution headline.",
+);
+
+assert(
+  buildActionNeededAlertText({
+    chatId: 200,
+    reason: "STATE_UPDATE_REMINDER",
+    asset: "BTC",
+    summary: "If you already bought or sold, update your recorded position.",
+    nextStep: "Use /setposition for inventory changes and /setcash if available cash changed.",
+  }).includes("ACTION NEEDED: BTC state update reminder is needed"),
+  "State-update reminder alerts should render a dedicated non-execution headline.",
 );

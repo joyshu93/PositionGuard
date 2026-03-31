@@ -20,6 +20,17 @@ export interface HourlyNotificationState {
   cooldownUntil: string | null;
 }
 
+export interface HourlyReminderState {
+  eligible: boolean;
+  sent: boolean;
+  reasonKey: string | null;
+  cooldownUntil: string | null;
+  suppressedBy: string | null;
+  repeatedSignalCount: number;
+  stateChangedSinceLastSignal: boolean | null;
+  signalReason: string | null;
+}
+
 export interface HourlyDiagnostics {
   cycleOutcome: HourlyCycleOutcome;
   baseDecisionStatus: DecisionResult["status"];
@@ -44,6 +55,14 @@ export interface HourlyDiagnostics {
     cooldownUntil: string | null;
     suppressedBy: string | null;
   };
+  notificationState: {
+    eligible: boolean;
+    sent: boolean;
+    reasonKey: string | null;
+    cooldownUntil: string | null;
+    suppressedBy: string | null;
+  };
+  reminderState: HourlyReminderState;
   decisionDetails: {
     regime: string | null;
     setupKind: string | null;
@@ -70,7 +89,16 @@ export function buildHourlyDiagnostics(input: {
   consecutiveMarketFailures: number;
   notificationEligible: boolean;
   notificationState: HourlyNotificationState;
+  reminderState: HourlyReminderState;
 }): HourlyDiagnostics {
+  const notificationState = {
+    eligible: input.notificationEligible,
+    sent: input.notificationState.sent,
+    reasonKey: input.notificationState.reasonKey,
+    cooldownUntil: input.notificationState.cooldownUntil,
+    suppressedBy: input.notificationState.suppressedBy,
+  };
+
   return {
     cycleOutcome: getHourlyCycleOutcome(input.finalDecision, input.notificationState),
     baseDecisionStatus: input.baseDecision.status,
@@ -84,13 +112,9 @@ export function buildHourlyDiagnostics(input: {
     marketData: input.marketResult.ok
       ? { ok: true, reason: null, message: null, consecutiveFailures: input.consecutiveMarketFailures, repeatedFailure: false }
       : { ok: false, reason: input.marketResult.reason, message: input.marketResult.message, consecutiveFailures: input.consecutiveMarketFailures, repeatedFailure: input.consecutiveMarketFailures >= 3 },
-    notification: {
-      eligible: input.notificationEligible,
-      sent: input.notificationState.sent,
-      reasonKey: input.notificationState.reasonKey,
-      cooldownUntil: input.notificationState.cooldownUntil,
-      suppressedBy: input.notificationState.suppressedBy,
-    },
+    notification: notificationState,
+    notificationState,
+    reminderState: input.reminderState,
     decisionDetails: {
       regime: input.finalDecision.diagnostics?.regime?.classification ?? null,
       setupKind: input.finalDecision.diagnostics?.setup.kind ?? null,

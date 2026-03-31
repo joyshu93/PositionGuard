@@ -307,6 +307,10 @@ async function handleFetch(
               latestRegime: view.latestRegime,
               latestTriggerState: view.latestTriggerState,
               latestInvalidationState: view.latestInvalidationState,
+              latestReminderEligible: view.latestReminderEligible,
+              latestReminderSent: view.latestReminderSent,
+              latestReminderSuppressedBy: view.latestReminderSuppressedBy,
+              latestReminderRepeatedSignalCount: view.latestReminderRepeatedSignalCount,
               latestNotification: latestNotification
                 ? {
                     deliveryStatus: latestNotification.deliveryStatus,
@@ -366,9 +370,7 @@ async function handleFetch(
               10,
             );
             const latestSentAlert = recentNotifications.find(
-              (event) =>
-                event.eventType === "ACTION_NEEDED" &&
-                event.deliveryStatus === "SENT",
+              (event) => event.deliveryStatus === "SENT",
             );
 
             if (!latestSentAlert) {
@@ -439,6 +441,10 @@ function inferTelegramAlertReason(
 
   if (alertReason === "REDUCE_REVIEW_REQUIRED") {
     return "REDUCE_REVIEW_REQUIRED";
+  }
+
+  if (alertReason === "STATE_UPDATE_REMINDER") {
+    return "STATE_UPDATE_REMINDER";
   }
 
   return "SETUP_INCOMPLETE";
