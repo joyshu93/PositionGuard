@@ -220,23 +220,45 @@ async function handleFetch(
             }
 
             const readiness = assessReadiness(userState);
-            const latestDecision = await getLatestDecisionRecordForUser(env.DB, user.id);
-            const view = buildLastDecisionView(latestDecision);
+            // const latestDecision = await getLatestDecisionRecordForUser(env.DB, user.id);
+            // const view = buildLastDecisionView(latestDecision);
+
+            // return {
+            //   trackedAssets: readiness.trackedAssets,
+            //   lines: view
+            //     ? [
+            //         {
+            //           asset: view.asset,
+            //           status: view.status,
+            //           summary: view.summary,
+            //           createdAt: view.generatedAt,
+            //           alertOutcome: view.alertOutcome,
+            //           suppressedBy: view.suppressionReason,
+            //         },
+            //       ]
+            //     : [],
+            // };
+
+            const recentDecisions = await listRecentDecisionRecordsForUser(env.DB, user.id, 20);
+
+            const latestByAsset = readiness.trackedAssets
+              .map((asset) => {
+                const latestForAsset =
+                  recentDecisions.find((decision) => decision.asset === asset) ?? null;
+                return buildLastDecisionView(latestForAsset);
+              })
+              .filter((view): view is NonNullable<typeof view> => view !== null);
 
             return {
               trackedAssets: readiness.trackedAssets,
-              lines: view
-                ? [
-                    {
-                      asset: view.asset,
-                      status: view.status,
-                      summary: view.summary,
-                      createdAt: view.generatedAt,
-                      alertOutcome: view.alertOutcome,
-                      suppressedBy: view.suppressionReason,
-                    },
-                  ]
-                : [],
+              lines: latestByAsset.map((view) => ({
+                asset: view.asset,
+                status: view.status,
+                summary: view.summary,
+                createdAt: view.generatedAt,
+                alertOutcome: view.alertOutcome,
+                suppressedBy: view.suppressionReason,
+              })),
             };
           },
           async getHourlyHealthSnapshot(telegramUserId) {
