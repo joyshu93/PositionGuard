@@ -3,6 +3,7 @@ import type {
   DecisionContext,
   DecisionResult,
 } from "../domain/types.js";
+import { getMessages, localizeNoExecution, resolveUserLocale } from "../i18n/index.js";
 
 export interface TemporaryAlertPolicyInput {
   context: DecisionContext;
@@ -13,12 +14,14 @@ export interface TemporaryAlertPolicyInput {
 export function applyTemporaryAlertPolicy(
   input: TemporaryAlertPolicyInput,
 ): DecisionResult {
+  const locale = resolveUserLocale(input.context.user.locale ?? null);
+  const messages = getMessages(locale);
   const invalidStateAlert = getInvalidRecordedStateAlert(input.context);
   if (invalidStateAlert !== null) {
     return elevateToActionNeeded(
       input.baseDecision,
       input.context,
-      "Recorded state needs manual correction.",
+      messages.temporaryPolicy.recordedStateNeedsCorrection,
       invalidStateAlert.reasons,
       invalidStateAlert.alert,
     );
@@ -28,15 +31,15 @@ export function applyTemporaryAlertPolicy(
     return elevateToActionNeeded(
       input.baseDecision,
       input.context,
-      "Manual setup is incomplete.",
+      messages.temporaryPolicy.manualSetupIncomplete,
       input.baseDecision.reasons,
       {
         reason: "COMPLETE_SETUP",
         cooldownKey: `setup:${input.context.user.id}`,
         message: [
-          `Action needed: complete manual setup for ${input.context.setup.missingItems.join(", ")}.`,
-          "Use tracked assets, /setcash, and /setposition to update your record.",
-          "No trade was executed.",
+          messages.temporaryPolicy.completeSetupAlert(input.context.setup.missingItems.join(", ")),
+          messages.temporaryPolicy.completeSetupNext,
+          localizeNoExecution(locale),
         ].join("\n"),
       },
     );
@@ -51,7 +54,7 @@ export function applyTemporaryAlertPolicy(
     return elevateToActionNeeded(
       input.baseDecision,
       input.context,
-      `${input.context.positionState.asset} market data has been unavailable for repeated hourly checks.`,
+      messages.temporaryPolicy.marketDataUnavailableSummary(input.context.positionState.asset),
       [
         ...input.baseDecision.reasons,
         `Consecutive market snapshot failures: ${input.consecutiveMarketFailures}.`,
@@ -60,9 +63,9 @@ export function applyTemporaryAlertPolicy(
         reason: "MARKET_DATA_UNAVAILABLE",
         cooldownKey: `market-data:${input.context.user.id}:${input.context.positionState.asset}`,
         message: [
-          `Action needed: ${input.context.positionState.asset} market data has been unavailable for several checks.`,
-          "Review your spot record and retry later.",
-          "No trade was executed.",
+          messages.temporaryPolicy.marketDataUnavailableAlert(input.context.positionState.asset),
+          messages.temporaryPolicy.marketDataUnavailableNext,
+          localizeNoExecution(locale),
         ].join("\n"),
       },
     );
@@ -94,6 +97,8 @@ function getInvalidRecordedStateAlert(context: DecisionContext): {
   reasons: string[];
   alert: ActionNeededAlert;
 } | null {
+  const locale = resolveUserLocale(context.user.locale ?? null);
+  const messages = getMessages(locale);
   const position = context.positionState;
   if (!position) {
     return null;
@@ -109,9 +114,9 @@ function getInvalidRecordedStateAlert(context: DecisionContext): {
         reason: "INVALID_RECORDED_STATE",
         cooldownKey: `invalid:${context.user.id}:${position.asset}:zero-qty-nonzero-avg`,
         message: [
-          `Action needed: fix your ${position.asset} spot record.`,
-          "Quantity is 0 but average entry price is not 0.",
-          "No trade was executed.",
+          messages.temporaryPolicy.invalidSpotRecord(position.asset),
+          messages.temporaryPolicy.quantityZeroAverageNonZero,
+          localizeNoExecution(locale),
         ].join("\n"),
       },
     };

@@ -3,6 +3,8 @@ import type {
   DecisionLogRecord,
   NotificationEventRecord,
 } from "./types/persistence.js";
+import type { SupportedLocale } from "./domain/types.js";
+import { formatAvailability, getMessages, resolveUserLocale } from "./i18n/index.js";
 
 export interface LastDecisionView {
   asset: AssetSymbol;
@@ -101,39 +103,59 @@ export function buildHourlyHealthView(input: {
   };
 }
 
-export function renderLastDecisionMessage(view: LastDecisionView | null): string {
+export function renderLastDecisionMessage(
+  view: LastDecisionView | null,
+  localeInput?: SupportedLocale | null,
+): string {
+  const locale = resolveUserLocale(localeInput ?? null);
+  const messages = getMessages(locale);
+
   if (!view) {
-    return "No decision record is available yet.";
+    return locale === "ko"
+      ? "\uC544\uC9C1 \uACB0\uC815 \uAE30\uB85D\uC774 \uC5C6\uC2B5\uB2C8\uB2E4."
+      : "No decision record is available yet.";
   }
 
   const lines = [
-    "Last decision:",
-    `Asset: ${view.asset}`,
-    `Verdict: ${describeDecisionVerdict(view.status)}`,
-    `Status: ${view.status}`,
-    `When: ${view.generatedAt}`,
-    `Summary: ${view.summary}`,
-    `Alert: ${formatAlertOutcome(view)}`,
-    `Regime: ${view.regime ?? "n/a"} | Trigger: ${view.triggerState ?? "n/a"} | Invalidation: ${view.invalidationState ?? "n/a"}`,
-    `Note: ${describeDecisionNote(view.status)}`,
+    messages.operator.lastDecisionTitle,
+    messages.operator.asset(view.asset),
+    messages.operator.verdict(describeDecisionVerdict(view.status, locale)),
+    messages.operator.status(view.status),
+    messages.operator.when(view.generatedAt),
+    messages.operator.summary(view.summary),
+    messages.operator.alert(formatAlertOutcome(view)),
+    messages.operator.structure(view.regime ?? messages.booleans.notAvailable, view.triggerState ?? messages.booleans.notAvailable, view.invalidationState ?? messages.booleans.notAvailable),
+    messages.operator.note(describeDecisionNote(view.status, locale)),
   ];
 
   return lines.join("\n");
 }
 
-export function renderHourlyHealthMessage(view: HourlyHealthView): string {
+export function renderHourlyHealthMessage(
+  view: HourlyHealthView,
+  localeInput?: SupportedLocale | null,
+): string {
+  const locale = resolveUserLocale(localeInput ?? null);
+  const messages = getMessages(locale);
+
   return [
-    "Hourly health:",
-    `Latest decision: ${view.latestDecisionStatus ?? "none"}${view.latestDecisionAt ? ` @ ${view.latestDecisionAt}` : ""}`,
-    `Latest verdict: ${describeDecisionVerdict(view.latestDecisionStatus)}`,
-    `Recent market-data failures: ${view.recentMarketFailureCount}`,
-    `Recent cooldown skips: ${view.recentCooldownSkipCount}`,
-    `Recent sleep suppressions: ${view.recentSleepSuppressionCount}`,
-    `Recent setup-blocked cycles: ${view.recentSetupBlockedCount}`,
-    `Latest structure: regime ${view.latestRegime ?? "n/a"} | trigger ${view.latestTriggerState ?? "n/a"} | invalidation ${view.latestInvalidationState ?? "n/a"}`,
-    `Latest reminder: eligible ${formatBoolean(view.latestReminderEligible)} | sent ${formatBoolean(view.latestReminderSent)} | repeated ${view.latestReminderRepeatedSignalCount ?? "n/a"}${view.latestReminderSuppressedBy ? ` | suppressed ${view.latestReminderSuppressedBy}` : ""}`,
-    `Latest market issue: ${view.latestMarketFailureMessage ?? "none"}`,
-    "Operational only. No trade was executed.",
+    messages.operator.hourlyHealthTitle,
+    messages.operator.latestDecision(view.latestDecisionStatus ?? messages.booleans.none, view.latestDecisionAt ?? ""),
+    messages.operator.latestVerdict(describeDecisionVerdict(view.latestDecisionStatus, locale)),
+    messages.operator.recentMarketDataFailures(view.recentMarketFailureCount),
+    messages.operator.recentCooldownSkips(view.recentCooldownSkipCount),
+    messages.operator.recentSleepSuppressions(view.recentSleepSuppressionCount),
+    messages.operator.recentSetupBlockedCycles(view.recentSetupBlockedCount),
+    messages.operator.latestStructure(
+      view.latestRegime ?? messages.booleans.notAvailable,
+      view.latestTriggerState ?? messages.booleans.notAvailable,
+      view.latestInvalidationState ?? messages.booleans.notAvailable,
+    ),
+    messages.operator.latestReminder(
+      `eligible ${formatBoolean(view.latestReminderEligible, locale)} | sent ${formatBoolean(view.latestReminderSent, locale)} | repeated ${view.latestReminderRepeatedSignalCount ?? messages.booleans.notAvailable}${view.latestReminderSuppressedBy ? ` | suppressed ${view.latestReminderSuppressedBy}` : ""}`,
+    ),
+    messages.operator.latestMarketIssue(view.latestMarketFailureMessage ?? messages.booleans.none),
+    messages.operator.operationalOnly,
   ].join("\n");
 }
 
@@ -160,44 +182,54 @@ function formatAlertOutcome(view: LastDecisionView): string {
   return `${view.alertOutcome} (${view.suppressionReason})`;
 }
 
-export function describeDecisionVerdict(status: string | null | undefined): string {
+export function describeDecisionVerdict(
+  status: string | null | undefined,
+  localeInput?: SupportedLocale | null,
+): string {
+  const locale = resolveUserLocale(localeInput ?? null);
+  const messages = getMessages(locale);
   if (status === "SETUP_INCOMPLETE") {
-    return "setup incomplete";
+    return messages.operator.setupIncomplete;
   }
 
   if (status === "INSUFFICIENT_DATA") {
-    return "insufficient data";
+    return messages.operator.insufficientData;
   }
 
   if (status === "NO_ACTION") {
-    return "no action";
+    return messages.operator.noAction;
   }
 
   if (status === "ACTION_NEEDED") {
-    return "action needed";
+    return messages.operator.actionNeeded;
   }
 
-  return "unknown";
+  return messages.operator.unknown;
 }
 
-function describeDecisionNote(status: string | null | undefined): string {
+function describeDecisionNote(
+  status: string | null | undefined,
+  localeInput?: SupportedLocale | null,
+): string {
+  const locale = resolveUserLocale(localeInput ?? null);
+  const messages = getMessages(locale);
   if (status === "SETUP_INCOMPLETE") {
-    return "waiting for missing manual inputs";
+    return messages.operator.noteSetupIncomplete;
   }
 
   if (status === "INSUFFICIENT_DATA") {
-    return "hourly market context was not complete";
+    return messages.operator.noteInsufficientData;
   }
 
   if (status === "NO_ACTION") {
-    return "current rules do not require action";
+    return messages.operator.noteNoAction;
   }
 
   if (status === "ACTION_NEEDED") {
-    return "operator follow-up is required";
+    return messages.operator.noteActionNeeded;
   }
 
-  return "status is not recognized";
+  return messages.operator.noteUnknown;
 }
 
 function countSuppression(
@@ -306,10 +338,10 @@ function getLatestReminderRepeatedSignalCount(
   return typeof value === "number" ? value : null;
 }
 
-function formatBoolean(value: boolean | null): string {
+function formatBoolean(value: boolean | null, locale: SupportedLocale): string {
   if (value === null) {
-    return "n/a";
+    return getMessages(locale).booleans.notAvailable;
   }
 
-  return value ? "yes" : "no";
+  return formatAvailability(locale, value);
 }

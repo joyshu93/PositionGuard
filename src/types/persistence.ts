@@ -1,6 +1,7 @@
 export type AssetSymbol = "BTC" | "ETH";
 export type MarketSymbol = "KRW-BTC" | "KRW-ETH";
 export type TrackedAssetPreferenceRecord = "BTC" | "ETH" | "BTC,ETH";
+export type SupportedLocaleRecord = "ko" | "en";
 
 export interface UserRecord {
   id: number;
@@ -8,6 +9,7 @@ export interface UserRecord {
   telegramChatId: string | null;
   username: string | null;
   displayName: string | null;
+  locale: SupportedLocaleRecord | null;
   trackedAssets: TrackedAssetPreferenceRecord;
   sleepMode: boolean;
   onboardingComplete: boolean;
@@ -20,6 +22,8 @@ export interface UserProfileInput {
   telegramChatId?: string | null;
   username?: string | null;
   displayName?: string | null;
+  telegramLanguageCode?: string | null;
+  locale?: SupportedLocaleRecord | null;
   trackedAssets?: TrackedAssetPreferenceRecord | null;
 }
 

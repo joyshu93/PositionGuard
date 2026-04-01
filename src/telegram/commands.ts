@@ -1,3 +1,8 @@
+import type { SupportedLocale } from "../domain/types.js";
+import { formatAvailability, formatCompactTimestampForLocale, formatLocaleName, formatNumberForLocale, getMessages, localizeNoExecution, resolveUserLocale } from "../i18n/index.js";
+import { formatValidationErrors, validatePositionInput } from "../validation.js";
+import { describeDecisionVerdict } from "../operator-visibility.js";
+import { parseCashAmount, parsePositionArgs, parseSleepModeArg, parseTelegramCallbackAction } from "./parser.js";
 import type {
   TelegramActionNeededReason,
   TelegramCommandContext,
@@ -7,192 +12,250 @@ import type {
   TelegramReplyMarkup,
   TelegramOnboardingSnapshot,
   TelegramRouterDependencies,
-  TelegramUserStateSnapshot,
   TelegramTrackedAssetsSelection,
-} from './types.js';
-import { formatValidationErrors, validatePositionInput } from '../validation.js';
-import { parseCashAmount, parsePositionArgs, parseSleepModeArg, parseTelegramCallbackAction } from './parser.js';
-import { describeDecisionVerdict } from '../operator-visibility.js';
+  TelegramUserStateSnapshot,
+} from "./types.js";
 
-export function routeCommand(context: TelegramCommandContext, deps: TelegramRouterDependencies): Promise<TelegramOutgoingAction[]> {
-  const bootstrap = deps.stateStore?.upsertUserState(context.profile);
-  const command = context.command.toLowerCase();
-
-  if (command === 'callback') {
-    return Promise.resolve(bootstrap).then(() => routeCallback(context, deps));
-  }
-
-  switch (command) {
-    case 'start':
-      return Promise.resolve(bootstrap).then(() => [send(context.chatId, buildStartText(), buildOnboardingKeyboard())]);
-    case 'help':
-      return Promise.resolve(bootstrap).then(() => [send(context.chatId, buildHelpText(), buildOnboardingKeyboard())]);
-    case 'track':
-      return Promise.resolve(bootstrap).then(() => handleTrack(context, deps));
-    case 'status':
-      return Promise.resolve(bootstrap).then(() => handleStatus(context, deps));
-    case 'setcash':
-      return Promise.resolve(bootstrap).then(() => handleSetCash(context, deps));
-    case 'setposition':
-      return Promise.resolve(bootstrap).then(() => handleSetPosition(context, deps));
-    case 'lastdecision':
-      return Promise.resolve(bootstrap).then(() => handleLastDecision(context, deps));
-    case 'hourlyhealth':
-      return Promise.resolve(bootstrap).then(() => handleHourlyHealth(context, deps));
-    case 'lastalert':
-      return Promise.resolve(bootstrap).then(() => handleLastAlert(context, deps));
-    case 'sleep':
-      return Promise.resolve(bootstrap).then(() => handleSleep(context, deps));
-    default:
-      return Promise.resolve(bootstrap).then(() => [send(context.chatId, buildUnknownCommandText())]);
-  }
-}
-
-async function routeCallback(context: TelegramCommandContext, deps: TelegramRouterDependencies): Promise<TelegramOutgoingAction[]> {
-  const callbackQuery = context.replyToCallback;
-  const action = parseTelegramCallbackAction(callbackQuery?.data);
-  if (!action || !callbackQuery) {
-    return [answer(callbackQuery?.id ?? '', 'Unsupported action')];
-  }
-
-  if (action.kind === 'sleep:on') {
-    return [answer(callbackQuery.id), ...(await handleSleep(context, deps, true))];
-  }
-
-  if (action.kind === 'sleep:off') {
-    return [answer(callbackQuery.id), ...(await handleSleep(context, deps, false))];
-  }
-
-  if (action.kind === 'setup:progress') {
-    return [answer(callbackQuery.id), ...(await handleSetupProgress(context, deps))];
-  }
-
-  if (action.kind === 'status:refresh') {
-    return [answer(callbackQuery.id), ...(await handleStatus(context, deps))];
-  }
-
-  if (action.kind === 'setup:track') {
-    return [answer(callbackQuery.id), ...(await handleTrackedAssetsChoice(context, deps, action.trackedAssets))];
-  }
-
-  if (action.kind === 'setup:cash') {
-    return [answer(callbackQuery.id), ...buildCashShortcutActions(context)];
-  }
-
-  if (action.kind === 'setup:position') {
-    return [answer(callbackQuery.id), ...buildPositionShortcutActions(context, action.asset)];
-  }
-
-  if (action.kind === 'inspect:lastdecision') {
-    return [answer(callbackQuery.id), ...(await handleLastDecision(context, deps))];
-  }
-
-  if (action.kind === 'inspect:hourlyhealth') {
-    return [answer(callbackQuery.id), ...(await handleHourlyHealth(context, deps))];
-  }
-
-  return [answer(callbackQuery.id), ...(await handleStatus(context, deps))];
-}
-
-function handleStatus(context: TelegramCommandContext, deps: TelegramRouterDependencies): Promise<TelegramOutgoingAction[]> {
-  if (deps.statusProvider) {
-    return deps.statusProvider.getStatus(context.userId).then((text) => [send(context.chatId, text, buildOnboardingKeyboard())]);
-  }
-
-  if (deps.onboardingProvider) {
-    return deps.onboardingProvider.getOnboardingSnapshot(context.userId).then((snapshot) => {
-      if (snapshot) {
-        return [send(context.chatId, formatOnboardingSnapshot(snapshot), buildOnboardingKeyboard())];
-      }
-
-      return buildFallbackStatus(context, deps);
-    });
-  }
-
-  if (deps.stateStore) {
-    return deps.stateStore.getUserState(context.userId).then((state) => [
-      send(context.chatId, formatStatus(state), buildOnboardingKeyboard()),
-    ]);
-  }
-
-  return Promise.resolve([send(context.chatId, formatStatus(null), buildOnboardingKeyboard())]);
-}
-
-function handleSetupProgress(
+export function routeCommand(
   context: TelegramCommandContext,
   deps: TelegramRouterDependencies,
 ): Promise<TelegramOutgoingAction[]> {
-  if (!deps.onboardingProvider) {
-    return handleStatus(context, deps);
-  }
+  const bootstrap = deps.stateStore?.upsertUserState(context.profile);
+  const command = context.command.toLowerCase();
+  const fallbackLocale = resolveUserLocale(
+    context.profile.preferredLocale ?? null,
+    context.profile.languageCode ?? null,
+  );
 
-  return deps.onboardingProvider.getOnboardingSnapshot(context.userId).then((snapshot) => {
-    if (!snapshot) {
-      return buildFallbackStatus(context, deps);
+  return Promise.resolve(bootstrap).then((bootstrappedLocale) => {
+    const locale = resolveUserLocale(
+      (bootstrappedLocale as SupportedLocale | null | undefined) ?? fallbackLocale,
+      context.profile.languageCode ?? null,
+    );
+
+    if (command === "callback") {
+      return routeCallback(context, deps, locale);
     }
 
-    return [send(context.chatId, formatOnboardingSnapshot(snapshot), buildOnboardingKeyboard())];
+    switch (command) {
+      case "start":
+        return [send(context.chatId, getMessages(locale).command.start, buildOnboardingKeyboard(locale))];
+      case "help":
+        return [send(context.chatId, getMessages(locale).command.help, buildOnboardingKeyboard(locale))];
+      case "language":
+        return handleLanguage(context, deps, locale);
+      case "track":
+        return handleTrack(context, deps, locale);
+      case "status":
+        return handleStatus(context, deps, locale);
+      case "setcash":
+        return handleSetCash(context, deps, locale);
+      case "setposition":
+        return handleSetPosition(context, deps, locale);
+      case "lastdecision":
+        return handleLastDecision(context, deps, locale);
+      case "hourlyhealth":
+        return handleHourlyHealth(context, deps, locale);
+      case "lastalert":
+        return handleLastAlert(context, deps, locale);
+      case "sleep":
+        return handleSleep(context, deps, locale);
+      default:
+        return [send(context.chatId, getMessages(locale).command.unknown, buildOnboardingKeyboard(locale))];
+    }
   });
 }
 
-async function handleSetCash(context: TelegramCommandContext, deps: TelegramRouterDependencies): Promise<TelegramOutgoingAction[]> {
-  const amount = parseCashAmount(context.args.join(' '));
+async function routeCallback(
+  context: TelegramCommandContext,
+  deps: TelegramRouterDependencies,
+  locale: SupportedLocale,
+): Promise<TelegramOutgoingAction[]> {
+  const callbackQuery = context.replyToCallback;
+  const action = parseTelegramCallbackAction(callbackQuery?.data);
+  const messages = getMessages(locale);
+
+  if (!action || !callbackQuery) {
+    return [answer(callbackQuery?.id ?? "", messages.command.unsupportedAction)];
+  }
+
+  if (action.kind === "sleep:on") {
+    return [answer(callbackQuery.id), ...(await handleSleep(context, deps, locale, true))];
+  }
+
+  if (action.kind === "sleep:off") {
+    return [answer(callbackQuery.id), ...(await handleSleep(context, deps, locale, false))];
+  }
+
+  if (action.kind === "setup:progress") {
+    return [answer(callbackQuery.id), ...(await handleSetupProgress(context, deps, locale))];
+  }
+
+  if (action.kind === "status:refresh") {
+    return [answer(callbackQuery.id), ...(await handleStatus(context, deps, locale))];
+  }
+
+  if (action.kind === "setup:track") {
+    return [answer(callbackQuery.id), ...(await handleTrackedAssetsChoice(context, deps, locale, action.trackedAssets))];
+  }
+
+  if (action.kind === "setup:cash") {
+    return [answer(callbackQuery.id), ...buildCashShortcutActions(context, locale)];
+  }
+
+  if (action.kind === "setup:position") {
+    return [answer(callbackQuery.id), ...buildPositionShortcutActions(context, locale, action.asset)];
+  }
+
+  if (action.kind === "inspect:lastdecision") {
+    return [answer(callbackQuery.id), ...(await handleLastDecision(context, deps, locale))];
+  }
+
+  if (action.kind === "inspect:hourlyhealth") {
+    return [answer(callbackQuery.id), ...(await handleHourlyHealth(context, deps, locale))];
+  }
+
+  return [answer(callbackQuery.id), ...(await handleStatus(context, deps, locale))];
+}
+
+async function handleLanguage(
+  context: TelegramCommandContext,
+  deps: TelegramRouterDependencies,
+  locale: SupportedLocale,
+): Promise<TelegramOutgoingAction[]> {
+  const requested = context.args[0]?.trim().toLowerCase();
+  const currentMessages = getMessages(locale);
+
+  if (requested !== "ko" && requested !== "en") {
+    const invalidInput = requested ?? "";
+    const text = invalidInput
+      ? currentMessages.command.languageInvalid(invalidInput, currentMessages.localeName)
+      : currentMessages.command.languageUsage(currentMessages.localeName);
+    return [send(context.chatId, text, buildOnboardingKeyboard(locale))];
+  }
+
+  if (deps.stateStore?.setLocale) {
+    await deps.stateStore.setLocale(context.userId, requested);
+  }
+
+  const selectedLocale = requested as SupportedLocale;
+  const selectedMessages = getMessages(selectedLocale);
+  return [
+    send(
+      context.chatId,
+      selectedMessages.command.languageSet(selectedMessages.localeName),
+      buildOnboardingKeyboard(selectedLocale),
+    ),
+  ];
+}
+
+async function handleStatus(
+  context: TelegramCommandContext,
+  deps: TelegramRouterDependencies,
+  locale: SupportedLocale,
+): Promise<TelegramOutgoingAction[]> {
+  if (deps.statusProvider) {
+    const text = await deps.statusProvider.getStatus(context.userId, locale);
+    return [send(context.chatId, text, buildOnboardingKeyboard(locale))];
+  }
+
+  if (deps.onboardingProvider) {
+    const snapshot = await deps.onboardingProvider.getOnboardingSnapshot(context.userId);
+    if (snapshot) {
+      return [send(context.chatId, formatOnboardingSnapshot(snapshot, locale), buildOnboardingKeyboard(locale))];
+    }
+  }
+
+  return buildFallbackStatus(context, deps, locale);
+}
+
+async function handleSetupProgress(
+  context: TelegramCommandContext,
+  deps: TelegramRouterDependencies,
+  locale: SupportedLocale,
+): Promise<TelegramOutgoingAction[]> {
+  if (!deps.onboardingProvider) {
+    return handleStatus(context, deps, locale);
+  }
+
+  const snapshot = await deps.onboardingProvider.getOnboardingSnapshot(context.userId);
+  if (!snapshot) {
+    return buildFallbackStatus(context, deps, locale);
+  }
+
+  return [send(context.chatId, formatOnboardingSnapshot(snapshot, locale), buildOnboardingKeyboard(locale))];
+}
+
+async function handleSetCash(
+  context: TelegramCommandContext,
+  deps: TelegramRouterDependencies,
+  locale: SupportedLocale,
+): Promise<TelegramOutgoingAction[]> {
+  const amount = parseCashAmount(context.args.join(" "));
+  const messages = getMessages(locale);
   if (amount === null) {
-    return [send(context.chatId, formatValidationErrors(
-      ['Available cash must be a non-negative number.'],
-      'Usage: /setcash <amount>\nExample: /setcash 1000000',
-    ), buildOnboardingKeyboard())];
+    return [
+      send(
+        context.chatId,
+        formatValidationErrors(
+          [
+            locale === "ko"
+              ? "\uC0AC\uC6A9 \uAC00\uB2A5 \uD604\uAE08\uC740 0 \uC774\uC0C1\uC758 \uC22B\uC790\uC5EC\uC57C \uD569\uB2C8\uB2E4."
+              : "Available cash must be a non-negative number.",
+          ],
+          messages.command.invalidCashUsage,
+        ),
+        buildOnboardingKeyboard(locale),
+      ),
+    ];
   }
 
   if (deps.stateStore) {
     await deps.stateStore.setCash(context.userId, amount);
   }
 
-  return [send(context.chatId, `Cash recorded: ${formatNumber(amount)}.`, buildOnboardingKeyboard())];
+  return [
+    send(
+      context.chatId,
+      messages.command.cashRecorded(formatNumberForLocale(locale, amount)),
+      buildOnboardingKeyboard(locale),
+    ),
+  ];
 }
 
 async function handleTrack(
   context: TelegramCommandContext,
   deps: TelegramRouterDependencies,
+  locale: SupportedLocale,
 ): Promise<TelegramOutgoingAction[]> {
   const trackedAssets = parseTrackedAssetsSelection(context.args[0]);
   if (!trackedAssets) {
-    return [
-      send(
-        context.chatId,
-        [
-          'Usage: /track <BTC|ETH|BOTH>',
-          'Example: /track BTC',
-          'This only changes which spot assets PositionGuard expects in setup readiness.',
-        ].join('\n'),
-        buildOnboardingKeyboard(),
-      ),
-    ];
+    return [send(context.chatId, getMessages(locale).command.invalidTrackUsage, buildOnboardingKeyboard(locale))];
   }
 
-  return handleTrackedAssetsChoice(context, deps, trackedAssets);
+  return handleTrackedAssetsChoice(context, deps, locale, trackedAssets);
 }
 
-async function handleSetPosition(context: TelegramCommandContext, deps: TelegramRouterDependencies): Promise<TelegramOutgoingAction[]> {
+async function handleSetPosition(
+  context: TelegramCommandContext,
+  deps: TelegramRouterDependencies,
+  locale: SupportedLocale,
+): Promise<TelegramOutgoingAction[]> {
   const parsed = parsePositionArgs(context.args);
+  const messages = getMessages(locale);
   if (!parsed) {
-    return [send(
-      context.chatId,
-      'Usage: /setposition <BTC|ETH> <quantity> <average-entry-price>\nExample: /setposition BTC 0.25 95000000',
-      buildOnboardingKeyboard(),
-    )];
+    return [send(context.chatId, messages.command.invalidPositionUsage, buildOnboardingKeyboard(locale))];
   }
 
   const validation = validatePositionInput(parsed);
   if (!validation.ok || !validation.value) {
-    return [send(
-      context.chatId,
-      formatValidationErrors(
-        validation.errors,
-        'Usage: /setposition <BTC|ETH> <quantity> <average-entry-price>\nExample: /setposition ETH 1.2 3500000',
+    return [
+      send(
+        context.chatId,
+        formatValidationErrors(validation.errors, messages.command.invalidPositionUsage),
+        buildOnboardingKeyboard(locale),
       ),
-      buildOnboardingKeyboard(),
-    )];
+    ];
   }
 
   if (deps.stateStore) {
@@ -204,132 +267,92 @@ async function handleSetPosition(context: TelegramCommandContext, deps: Telegram
     });
   }
 
-  return [send(
-    context.chatId,
-    `${validation.value.asset} spot position recorded: ${formatNumber(validation.value.quantity)} @ avg ${formatNumber(validation.value.averageEntryPrice)} KRW.\nThis is a manual record only. No trade was executed.`,
-    buildOnboardingKeyboard(),
-  )];
+  return [
+    send(
+      context.chatId,
+      [
+        `${validation.value.asset} ${locale === "ko" ? "\uD604\uBB3C \uAE30\uB85D \uC644\uB8CC" : "spot position recorded"}: ${formatNumberForLocale(locale, validation.value.quantity)} @ avg ${formatNumberForLocale(locale, validation.value.averageEntryPrice)} KRW.`,
+        localizeNoExecution(locale),
+      ].join("\n"),
+      buildOnboardingKeyboard(locale),
+    ),
+  ];
 }
 
-async function handleSleep(context: TelegramCommandContext, deps: TelegramRouterDependencies, forced?: boolean): Promise<TelegramOutgoingAction[]> {
-  const arg = typeof forced === 'boolean' ? forced : parseSleepModeArg(context.args);
-  if (arg === null || typeof arg === 'undefined') {
-    return [send(context.chatId, 'Usage: /sleep on or /sleep off')];
+async function handleSleep(
+  context: TelegramCommandContext,
+  deps: TelegramRouterDependencies,
+  locale: SupportedLocale,
+  forced?: boolean,
+): Promise<TelegramOutgoingAction[]> {
+  const arg = typeof forced === "boolean" ? forced : parseSleepModeArg(context.args);
+  const messages = getMessages(locale);
+  if (arg === null || typeof arg === "undefined") {
+    return [send(context.chatId, messages.command.invalidSleepUsage, buildOnboardingKeyboard(locale))];
   }
 
   if (deps.stateStore) {
     await deps.stateStore.setSleepMode(context.userId, arg);
   }
 
-  return [send(context.chatId, arg ? 'Sleep mode is now on.' : 'Sleep mode is now off.', buildOnboardingKeyboard())];
+  return [send(context.chatId, messages.command.sleepUpdated(arg), buildOnboardingKeyboard(locale))];
 }
 
-function buildStartText(): string {
-  return [
-    'PositionGuard is a BTC/ETH spot position coach.',
-    'It is not an auto-trading bot.',
-    '',
-    'Choose which assets you want to track with the buttons below, then record cash and spot inventory manually.',
-    'Use /help to see the available commands.',
-  ].join('\n');
-}
-
-function buildHelpText(): string {
-  return [
-    'Commands:',
-    '/start - intro and setup boundary',
-    '/help - command list',
-    '/status - view stored state summary',
-    '/track <BTC|ETH|BOTH> - choose which spot assets to track',
-    'Setup buttons below - choose tracked assets and next steps',
-    '/setcash <amount> - record available cash',
-    '/setposition <BTC|ETH> <quantity> <average-entry-price> - record spot inventory only',
-    '/lastdecision - inspect the latest hourly decision',
-    '/hourlyhealth - inspect recent hourly processing health',
-    '/lastalert - inspect the last recorded alert state',
-    '/sleep on - pause alerts',
-    '/sleep off - resume alerts',
-    '',
-    'This bot records user-reported state only and does not execute trades.',
-  ].join('\n');
-}
-
-function buildUnknownCommandText(): string {
-  return 'Unknown command. Use /help to see supported commands.';
-}
-
-export function buildOnboardingKeyboard(): TelegramReplyMarkup {
+export function buildOnboardingKeyboard(locale: SupportedLocale = "en"): TelegramReplyMarkup {
+  const messages = getMessages(locale);
   return {
     inline_keyboard: [
       [
-        { text: 'Track BTC', callback_data: 'setup:track:btc' },
-        { text: 'Track ETH', callback_data: 'setup:track:eth' },
+        { text: messages.buttons.trackBtc, callback_data: "setup:track:btc" },
+        { text: messages.buttons.trackEth, callback_data: "setup:track:eth" },
       ],
       [
-        { text: 'Track both', callback_data: 'setup:track:both' },
-        { text: 'Setup progress', callback_data: 'setup:progress' },
+        { text: messages.buttons.trackBoth, callback_data: "setup:track:both" },
+        { text: messages.buttons.setupProgress, callback_data: "setup:progress" },
       ],
       [
-        { text: 'Record cash', callback_data: 'setup:cash' },
-        { text: 'Record BTC', callback_data: 'setup:position:btc' },
+        { text: messages.buttons.recordCash, callback_data: "setup:cash" },
+        { text: messages.buttons.recordBtc, callback_data: "setup:position:btc" },
       ],
       [
-        { text: 'Record ETH', callback_data: 'setup:position:eth' },
-        { text: 'Status', callback_data: 'status:refresh' },
+        { text: messages.buttons.recordEth, callback_data: "setup:position:eth" },
+        { text: messages.buttons.status, callback_data: "status:refresh" },
       ],
       [
-        { text: 'Last decision', callback_data: 'inspect:lastdecision' },
-        { text: 'Hourly health', callback_data: 'inspect:hourlyhealth' },
+        { text: messages.buttons.lastDecision, callback_data: "inspect:lastdecision" },
+        { text: messages.buttons.hourlyHealth, callback_data: "inspect:hourlyhealth" },
       ],
     ],
   };
 }
 
-function formatStatus(state: TelegramUserStateSnapshot | null): string {
-  if (!state) {
-    return [
-      'No stored setup yet.',
-      'Use the buttons below to choose tracked assets, then record cash and spot inventory manually.',
-      'This bot records manual state only. No trade was executed.',
-    ].join('\n');
-  }
-
-  return [
-    `User: ${state.telegramUserId}`,
-    `Tracked assets: ${state.trackedAssets}`,
-    `Sleep: ${state.isSleeping ? 'on' : 'off'}`,
-    `Cash: ${state.cash === null ? 'not set' : formatNumber(state.cash)}`,
-    'Choose tracked assets with the buttons below, then record BTC or ETH inventory if you want them coached.',
-  ].join('\n');
-}
-
 async function handleLastAlert(
   context: TelegramCommandContext,
   deps: TelegramRouterDependencies,
+  locale: SupportedLocale,
 ): Promise<TelegramOutgoingAction[]> {
   const snapshot = await deps.notificationProvider?.getLastAlert(context.userId);
+  const messages = getMessages(locale);
   if (!snapshot) {
-    return [
-      send(
-        context.chatId,
-        'No alert record is available yet. ACTION_NEEDED alerts are only sent when the hourly loop records one.',
-        buildOnboardingKeyboard(),
-      ),
-    ];
+    return [send(context.chatId, messages.command.noAlertYet, buildOnboardingKeyboard(locale))];
   }
 
   return [
     send(
       context.chatId,
       [
-        'Last alert:',
-        `Reason: ${snapshot.reason}`,
-        `Asset: ${snapshot.asset ?? 'n/a'}`,
-        `When: ${formatCompactTimestamp(snapshot.sentAt)}`,
-        `Summary: ${truncateText(snapshot.summary, 120)}`,
-        `Cooldown until: ${snapshot.cooldownUntil ? formatCompactTimestamp(snapshot.cooldownUntil) : 'n/a'}`,
-      ].join('\n'),
-      buildOnboardingKeyboard(),
+        messages.command.lastAlertTitle,
+        messages.command.alertReason(snapshot.reason),
+        messages.command.alertAsset(snapshot.asset ?? messages.booleans.notAvailable),
+        messages.command.alertWhen(formatCompactTimestampForLocale(locale, snapshot.sentAt)),
+        messages.command.alertSummary(truncateText(snapshot.summary, 120)),
+        messages.command.alertCooldown(
+          snapshot.cooldownUntil
+            ? formatCompactTimestampForLocale(locale, snapshot.cooldownUntil)
+            : messages.booleans.notAvailable,
+        ),
+      ].join("\n"),
+      buildOnboardingKeyboard(locale),
     ),
   ];
 }
@@ -337,56 +360,42 @@ async function handleLastAlert(
 async function handleLastDecision(
   context: TelegramCommandContext,
   deps: TelegramRouterDependencies,
+  locale: SupportedLocale,
 ): Promise<TelegramOutgoingAction[]> {
   const snapshot = await deps.inspectionProvider?.getLastDecisionSnapshot(context.userId);
-  return [
-    send(
-      context.chatId,
-      renderLastDecisionSnapshot(snapshot),
-      buildOnboardingKeyboard(),
-    ),
-  ];
+  return [send(context.chatId, renderLastDecisionSnapshot(snapshot, locale), buildOnboardingKeyboard(locale))];
 }
 
 async function handleHourlyHealth(
   context: TelegramCommandContext,
   deps: TelegramRouterDependencies,
+  locale: SupportedLocale,
 ): Promise<TelegramOutgoingAction[]> {
   const snapshot = await deps.inspectionProvider?.getHourlyHealthSnapshot(context.userId);
-  return [
-    send(
-      context.chatId,
-      renderHourlyHealthSnapshot(snapshot),
-      buildOnboardingKeyboard(),
-    ),
-  ];
+  return [send(context.chatId, renderHourlyHealthSnapshot(snapshot, locale), buildOnboardingKeyboard(locale))];
 }
 
 async function handleTrackedAssetsChoice(
   context: TelegramCommandContext,
   deps: TelegramRouterDependencies,
+  locale: SupportedLocale,
   trackedAssets: TelegramTrackedAssetsSelection,
 ): Promise<TelegramOutgoingAction[]> {
-  const selectedAssets: ("BTC" | "ETH")[] = trackedAssets === 'BOTH'
-    ? ['BTC', 'ETH']
-    : [trackedAssets];
+  const selectedAssets: ("BTC" | "ETH")[] = trackedAssets === "BOTH" ? ["BTC", "ETH"] : [trackedAssets];
+  const messages = getMessages(locale);
 
   if (deps.onboardingProvider) {
-    const snapshot = await deps.onboardingProvider.setTrackedAssets(
-      context.userId,
-      selectedAssets,
-    );
+    const snapshot = await deps.onboardingProvider.setTrackedAssets(context.userId, selectedAssets);
 
     if (snapshot) {
       return [
         send(
           context.chatId,
-          [
-            `Tracked assets recorded: ${formatTrackedAssets(selectedAssets)}.`,
-            formatOnboardingSnapshot(snapshot),
-            'No trade was executed.',
-          ].join('\n'),
-          buildOnboardingKeyboard(),
+          messages.command.trackedAssetsRecorded(
+            formatTrackedAssets(selectedAssets, locale),
+            formatOnboardingSnapshot(snapshot, locale),
+          ),
+          buildOnboardingKeyboard(locale),
         ),
       ];
     }
@@ -395,211 +404,203 @@ async function handleTrackedAssetsChoice(
   return [
     send(
       context.chatId,
-      [
-        `Tracked assets chosen: ${formatTrackedAssets(selectedAssets)}.`,
-        'Next steps:',
-        '- record cash with /setcash <amount>',
-        ...selectedAssets.map((asset) =>
-          `- record ${asset} spot state with /setposition ${asset} <quantity> <average-entry-price>`,
-        ),
-        'This is record-only guidance. No trade was executed.',
-      ].join('\n'),
-      buildOnboardingKeyboard(),
+      messages.command.trackedAssetsChosen(
+        formatTrackedAssets(selectedAssets, locale),
+        [
+          `- /setcash <amount>`,
+          ...selectedAssets.map((asset) => `- /setposition ${asset} <quantity> <average-entry-price>`),
+        ],
+      ),
+      buildOnboardingKeyboard(locale),
     ),
   ];
 }
 
 function buildCashShortcutActions(
   context: TelegramCommandContext,
+  locale: SupportedLocale,
 ): TelegramOutgoingAction[] {
+  const messages = getMessages(locale);
   return [
     send(
       context.chatId,
-      [
-        'Record available cash with /setcash <amount>.',
-        'Example: /setcash 1000000',
-        'This is record-only guidance. No trade was executed.',
-      ].join('\n'),
-      buildOnboardingKeyboard(),
+      [messages.command.recordCashShortcut, messages.command.recordCashExample, messages.alerts.manualRecordOnly, localizeNoExecution(locale)].join("\n"),
+      buildOnboardingKeyboard(locale),
     ),
   ];
 }
 
 function buildPositionShortcutActions(
   context: TelegramCommandContext,
+  locale: SupportedLocale,
   asset: "BTC" | "ETH",
 ): TelegramOutgoingAction[] {
+  const messages = getMessages(locale);
   return [
     send(
       context.chatId,
       [
-        `Record ${asset} spot state with /setposition ${asset} <quantity> <average-entry-price>.`,
-        asset === 'BTC'
-          ? 'Example: /setposition BTC 0.25 95000000'
-          : 'Example: /setposition ETH 1.2 3500000',
-        'This is record-only guidance. No trade was executed.',
-      ].join('\n'),
-      buildOnboardingKeyboard(),
+        messages.command.recordPositionShortcut(asset),
+        messages.command.recordPositionExample(asset),
+        messages.alerts.manualRecordOnly,
+        localizeNoExecution(locale),
+      ].join("\n"),
+      buildOnboardingKeyboard(locale),
     ),
   ];
 }
 
-function buildFallbackStatus(
+async function buildFallbackStatus(
   context: TelegramCommandContext,
   deps: TelegramRouterDependencies,
+  locale: SupportedLocale,
 ): Promise<TelegramOutgoingAction[]> {
-  if (deps.statusProvider) {
-    return deps.statusProvider.getStatus(context.userId).then((text) => [send(context.chatId, text, buildOnboardingKeyboard())]);
-  }
-
   if (deps.stateStore) {
-    return deps.stateStore.getUserState(context.userId).then((state) => [
-      send(context.chatId, formatStatus(state), buildOnboardingKeyboard()),
-    ]);
+    const state = await deps.stateStore.getUserState(context.userId);
+    const resolved = resolveUserLocale(state?.locale ?? locale, context.profile.languageCode ?? null);
+    return [send(context.chatId, formatStatus(state, resolved), buildOnboardingKeyboard(resolved))];
   }
 
-  return Promise.resolve([send(context.chatId, formatStatus(null), buildOnboardingKeyboard())]);
+  return [send(context.chatId, formatStatus(null, locale), buildOnboardingKeyboard(locale))];
 }
 
-function parseTrackedAssetsSelection(
-  value: string | undefined,
-): TelegramTrackedAssetsSelection | null {
+function parseTrackedAssetsSelection(value: string | undefined): TelegramTrackedAssetsSelection | null {
   const normalized = value?.trim().toUpperCase();
-  if (normalized === 'BTC') {
-    return 'BTC';
+  if (normalized === "BTC") {
+    return "BTC";
   }
-  if (normalized === 'ETH') {
-    return 'ETH';
+  if (normalized === "ETH") {
+    return "ETH";
   }
-  if (normalized === 'BOTH' || normalized === 'BTC,ETH') {
-    return 'BOTH';
+  if (normalized === "BOTH" || normalized === "BTC,ETH") {
+    return "BOTH";
   }
   return null;
 }
 
-function formatOnboardingSnapshot(snapshot: TelegramOnboardingSnapshot): string {
+function formatOnboardingSnapshot(snapshot: TelegramOnboardingSnapshot, locale: SupportedLocale): string {
+  const messages = getMessages(locale);
   return [
-    `Tracked assets: ${formatTrackedAssets(snapshot.trackedAssets)}`,
-    `Cash record: ${snapshot.hasCashRecord ? 'present' : 'missing'}`,
-    `Tracked positions: ${
+    messages.onboarding.trackedAssets(formatTrackedAssets(snapshot.trackedAssets, locale)),
+    messages.onboarding.cashRecord(snapshot.hasCashRecord),
+    messages.onboarding.trackedPositions(
       snapshot.trackedPositionAssets.length > 0
-        ? formatTrackedAssets(snapshot.trackedPositionAssets)
-        : 'none yet'
-    }`,
-    `Readiness: ${snapshot.isReady ? 'ready for coaching' : 'needs setup'}`,
-    `Next steps: ${formatNextSteps(snapshot.missingNextSteps)}`,
-    'State is record-only. No trade execution is performed.',
-  ].join('\n');
+        ? formatTrackedAssets(snapshot.trackedPositionAssets, locale)
+        : messages.booleans.none,
+    ),
+    messages.onboarding.readiness(snapshot.isReady),
+    messages.onboarding.nextSteps(formatNextSteps(snapshot.missingNextSteps, locale)),
+    messages.onboarding.recordOnly,
+  ].join("\n");
 }
 
 function renderLastDecisionSnapshot(
   snapshot: TelegramLastDecisionSnapshot | null | undefined,
+  locale: SupportedLocale,
 ): string {
+  const messages = getMessages(locale);
   if (!snapshot || snapshot.lines.length === 0) {
-    return 'No decision record is available yet.';
+    return messages.command.noDecisionYet;
   }
 
   return [
-    'Last decision:',
-    `Tracked assets: ${formatTrackedAssets(snapshot.trackedAssets)}`,
-    ...snapshot.lines.map((line) => formatDecisionLine(line)),
-    'Operational only. No trade was executed.',
-  ].join('\n');
+    messages.operator.lastDecisionTitle,
+    messages.status.trackedAssets(formatTrackedAssets(snapshot.trackedAssets, locale)),
+    ...snapshot.lines.map((line) => formatDecisionLine(line, locale)),
+    messages.operator.operationalOnly,
+  ].join("\n");
 }
 
 function renderHourlyHealthSnapshot(
   snapshot: TelegramHourlyHealthSnapshot | null | undefined,
+  locale: SupportedLocale,
 ): string {
+  const messages = getMessages(locale);
   if (!snapshot) {
-    return 'No hourly health summary is available yet.';
+    return messages.command.noHourlyHealthYet;
   }
 
   const latestNotification = snapshot.latestNotification
-    ? `${snapshot.latestNotification.deliveryStatus}${snapshot.latestNotification.reasonKey ? ` | ${snapshot.latestNotification.reasonKey}` : ''}${snapshot.latestNotification.suppressedBy ? ` | ${snapshot.latestNotification.suppressedBy}` : ''}${snapshot.latestNotification.sentAt ? ` | ${formatCompactTimestamp(snapshot.latestNotification.sentAt)}` : ''}`
-    : 'none';
+    ? `${snapshot.latestNotification.deliveryStatus}${snapshot.latestNotification.reasonKey ? ` | ${snapshot.latestNotification.reasonKey}` : ""}${snapshot.latestNotification.suppressedBy ? ` | ${snapshot.latestNotification.suppressedBy}` : ""}${snapshot.latestNotification.sentAt ? ` | ${formatCompactTimestampForLocale(locale, snapshot.latestNotification.sentAt)}` : ""}`
+    : messages.booleans.none;
+
+  const reminderSummary =
+    `eligible ${formatAvailability(locale, snapshot.latestReminderEligible === true)} | ` +
+    `sent ${formatAvailability(locale, snapshot.latestReminderSent === true)} | ` +
+    `repeated ${snapshot.latestReminderRepeatedSignalCount ?? messages.booleans.notAvailable}` +
+    `${snapshot.latestReminderSuppressedBy ? ` | suppressed ${snapshot.latestReminderSuppressedBy}` : ""}`;
 
   return [
-    'Hourly health:',
-    `Tracked assets: ${formatTrackedAssets(snapshot.trackedAssets)}`,
-    `Readiness: ${snapshot.readiness.isReady ? 'ready' : 'blocked'} | cash: ${snapshot.readiness.hasCashRecord ? 'yes' : 'no'} | positions: ${formatTrackedAssets(snapshot.readiness.readyPositionAssets)}`,
-    `Missing: ${formatNextSteps(snapshot.readiness.missingItems)}`,
-    `Last run: ${snapshot.lastRunAt ? formatCompactTimestamp(snapshot.lastRunAt) : 'none'} | status: ${snapshot.lastDecisionStatus ?? 'none'} | verdict: ${describeDecisionVerdict(snapshot.lastDecisionStatus)}`,
-    `Market data: ${snapshot.marketDataStatus ?? 'none'} | failures: ${snapshot.recentMarketFailureCount} | latest issue: ${snapshot.latestMarketFailureMessage ? truncateText(snapshot.latestMarketFailureMessage, 100) : 'none'}`,
-    `Structure: regime ${snapshot.latestRegime ?? 'n/a'} | trigger ${snapshot.latestTriggerState ?? 'n/a'} | invalidation ${snapshot.latestInvalidationState ?? 'n/a'}`,
-    `Reminder: eligible ${formatBoolean(snapshot.latestReminderEligible)} | sent ${formatBoolean(snapshot.latestReminderSent)} | repeated ${snapshot.latestReminderRepeatedSignalCount ?? 'n/a'}${snapshot.latestReminderSuppressedBy ? ` | suppressed ${snapshot.latestReminderSuppressedBy}` : ''}`,
-    `Suppression: cooldown ${snapshot.recentCooldownSkipCount} | sleep ${snapshot.recentSleepSuppressionCount} | setup ${snapshot.recentSetupBlockedCount}`,
-    `Latest alert: ${latestNotification}`,
-    'Operational only. No trade was executed.',
-  ].join('\n');
+    messages.operator.hourlyHealthTitle,
+    messages.status.trackedAssets(formatTrackedAssets(snapshot.trackedAssets, locale)),
+    locale === "ko"
+      ? `\uC900\uBE44\uB3C4: ${snapshot.readiness.isReady ? messages.booleans.ready : messages.booleans.incomplete} | \uD604\uAE08: ${snapshot.readiness.hasCashRecord ? messages.booleans.yes : messages.booleans.no} | \uD3EC\uC9C0\uC158: ${formatTrackedAssets(snapshot.readiness.readyPositionAssets, locale)}`
+      : `Readiness: ${snapshot.readiness.isReady ? "ready" : "blocked"} | cash: ${snapshot.readiness.hasCashRecord ? "yes" : "no"} | positions: ${formatTrackedAssets(snapshot.readiness.readyPositionAssets, locale)}`,
+    messages.status.missingNextSteps(formatNextSteps(snapshot.readiness.missingItems, locale)),
+    messages.operator.latestDecision(snapshot.lastDecisionStatus ?? messages.booleans.none, snapshot.lastRunAt ?? ""),
+    locale === "ko"
+      ? `\uC2DC\uC7A5 \uB370\uC774\uD130: ${snapshot.marketDataStatus ?? messages.booleans.none} | \uC2E4\uD328: ${snapshot.recentMarketFailureCount} | \uCD5C\uADFC \uC774\uC288: ${snapshot.latestMarketFailureMessage ? truncateText(snapshot.latestMarketFailureMessage, 100) : messages.booleans.none}`
+      : `Market data: ${snapshot.marketDataStatus ?? messages.booleans.none} | failures: ${snapshot.recentMarketFailureCount} | latest issue: ${snapshot.latestMarketFailureMessage ? truncateText(snapshot.latestMarketFailureMessage, 100) : messages.booleans.none}`,
+    locale === "ko"
+      ? `\uAD6C\uC870: \uB808\uC9D0 ${snapshot.latestRegime ?? messages.booleans.notAvailable} | \uD2B8\uB9AC\uAC70 ${snapshot.latestTriggerState ?? messages.booleans.notAvailable} | \uBB34\uD6A8\uD654 ${snapshot.latestInvalidationState ?? messages.booleans.notAvailable}`
+      : `Structure: regime ${snapshot.latestRegime ?? messages.booleans.notAvailable} | trigger ${snapshot.latestTriggerState ?? messages.booleans.notAvailable} | invalidation ${snapshot.latestInvalidationState ?? messages.booleans.notAvailable}`,
+    locale === "ko"
+      ? `\uB9AC\uB9C8\uC778\uB354: ${reminderSummary}`
+      : `Reminder: ${reminderSummary}`,
+    locale === "ko"
+      ? `\uC5B5\uC81C: cooldown ${snapshot.recentCooldownSkipCount} | sleep ${snapshot.recentSleepSuppressionCount} | setup ${snapshot.recentSetupBlockedCount}`
+      : `Suppression: cooldown ${snapshot.recentCooldownSkipCount} | sleep ${snapshot.recentSleepSuppressionCount} | setup ${snapshot.recentSetupBlockedCount}`,
+    locale === "ko" ? `\uCD5C\uADFC \uC54C\uB9BC: ${latestNotification}` : `Latest alert: ${latestNotification}`,
+    messages.operator.operationalOnly,
+  ].join("\n");
 }
 
-function formatTrackedAssets(assets: Array<"BTC" | "ETH">): string {
+function formatTrackedAssets(assets: Array<"BTC" | "ETH">, locale: SupportedLocale): string {
+  const messages = getMessages(locale);
   if (assets.length === 0) {
-    return 'not selected';
+    return messages.booleans.notSelected;
   }
 
-  return assets.join(', ');
+  return assets.join(", ");
 }
 
-function formatNextSteps(steps: string[]): string {
+function formatNextSteps(steps: string[], locale: SupportedLocale): string {
+  const messages = getMessages(locale);
   if (steps.length === 0) {
-    return 'none';
+    return messages.booleans.none;
   }
 
-  return steps.join('; ');
+  return steps.join("; ");
 }
 
-function formatNumber(value: number): string {
-  return new Intl.NumberFormat('en-US', {
-    maximumFractionDigits: 8,
-  }).format(value);
-}
+function formatStatus(state: TelegramUserStateSnapshot | null, locale: SupportedLocale): string {
+  const messages = getMessages(locale);
+  if (!state) {
+    return [messages.command.noStoredSetup, messages.command.noStoredSetupHint, localizeNoExecution(locale)].join("\n");
+  }
 
-function formatDecisionLine(line: TelegramLastDecisionSnapshot['lines'][number]): string {
   return [
-    `${line.asset}: ${describeDecisionVerdict(line.status)}`,
-    `status ${line.status}`,
-    `${line.alertOutcome}${line.suppressedBy ? ` (${line.suppressedBy})` : ''}`,
-    `when ${formatCompactTimestamp(line.createdAt)}`,
-    `summary ${truncateText(line.summary, 90)}`,
-    `regime ${line.regime ?? 'n/a'} | trigger ${line.triggerState ?? 'n/a'} | invalidation ${line.invalidationState ?? 'n/a'}`,
-  ].join(' | ');
+    `User: ${state.telegramUserId}`,
+    messages.status.trackedAssets(
+      state.trackedAssets === "BTC,ETH" ? "BTC, ETH" : state.trackedAssets,
+    ),
+    messages.status.sleepMode(state.isSleeping),
+    messages.status.availableCash(
+      state.cash === null ? messages.booleans.notSet : formatNumberForLocale(locale, state.cash),
+    ),
+    messages.command.statusPrompt,
+  ].join("\n");
 }
 
-// function formatCompactTimestamp(value: string): string {
-//   const date = new Date(value);
-//   if (Number.isNaN(date.getTime())) {
-//     return value;
-//   }
-
-//   return date.toISOString().replace('.000Z', 'Z');
-// }
-
-function formatCompactTimestamp(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  const formatter = new Intl.DateTimeFormat("ko-KR", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
-
-  const parts = formatter.formatToParts(date);
-  const map = Object.fromEntries(
-    parts
-      .filter((part) => part.type !== "literal")
-      .map((part) => [part.type, part.value]),
-  );
-
-  return `${map.year}-${map.month}-${map.day} ${map.hour}:${map.minute}:${map.second} KST`;
+function formatDecisionLine(line: TelegramLastDecisionSnapshot["lines"][number], locale: SupportedLocale): string {
+  return [
+    `${line.asset}: ${describeDecisionVerdict(line.status, locale)}`,
+    `status ${line.status}`,
+    `${line.alertOutcome}${line.suppressedBy ? ` (${line.suppressedBy})` : ""}`,
+    `when ${formatCompactTimestampForLocale(locale, line.createdAt)}`,
+    `summary ${truncateText(line.summary, 90)}`,
+    `regime ${line.regime ?? getMessages(locale).booleans.notAvailable} | trigger ${line.triggerState ?? getMessages(locale).booleans.notAvailable} | invalidation ${line.invalidationState ?? getMessages(locale).booleans.notAvailable}`,
+  ].join(" | ");
 }
 
 function truncateText(value: string, limit: number): string {
@@ -612,24 +613,25 @@ function truncateText(value: string, limit: number): string {
 
 export interface TelegramActionNeededAlertInput {
   chatId: number;
+  locale?: SupportedLocale | null;
   reason: TelegramActionNeededReason;
   asset: "BTC" | "ETH" | null;
   summary: string;
   nextStep: string;
 }
 
-export function buildActionNeededAlertText(
-  input: TelegramActionNeededAlertInput,
-): string {
-  const assetLabel = input.asset ?? 'setup';
-  const headline = formatActionNeededHeadline(input.reason, assetLabel);
+export function buildActionNeededAlertText(input: TelegramActionNeededAlertInput): string {
+  const locale = resolveUserLocale(input.locale ?? null);
+  const messages = getMessages(locale);
+  const assetLabel = input.asset ?? "setup";
+  const headline = formatActionNeededHeadline(locale, input.reason, assetLabel);
   return [
-    `ACTION NEEDED: ${headline}`,
+    messages.alerts.actionNeededHeadline(headline),
     input.summary,
     input.nextStep,
-    'No trade was executed.',
-    'This is record-only guidance.',
-  ].join('\n');
+    localizeNoExecution(locale),
+    messages.alerts.manualRecordOnly,
+  ].join("\n");
 }
 
 export function buildActionNeededAlertActions(
@@ -639,56 +641,42 @@ export function buildActionNeededAlertActions(
 }
 
 function formatActionNeededHeadline(
+  locale: SupportedLocale,
   reason: TelegramActionNeededReason,
   assetLabel: string,
 ): string {
-  if (reason === 'SETUP_INCOMPLETE') {
-    return `${assetLabel} setup is incomplete`;
+  const messages = getMessages(locale);
+  if (reason === "SETUP_INCOMPLETE") {
+    return messages.alerts.setupIncomplete(assetLabel);
+  }
+  if (reason === "MISSING_MARKET_DATA") {
+    return messages.alerts.marketDataUnavailable(assetLabel);
+  }
+  if (reason === "RISK_REVIEW_REQUIRED") {
+    return messages.alerts.riskReview(assetLabel);
+  }
+  if (reason === "ENTRY_REVIEW_REQUIRED") {
+    return messages.alerts.entryReview(assetLabel);
+  }
+  if (reason === "ADD_BUY_REVIEW_REQUIRED") {
+    return messages.alerts.addBuyReview(assetLabel);
+  }
+  if (reason === "REDUCE_REVIEW_REQUIRED") {
+    return messages.alerts.reduceReview(assetLabel);
+  }
+  if (reason === "STATE_UPDATE_REMINDER") {
+    return messages.alerts.stateUpdateReminder(assetLabel);
   }
 
-  if (reason === 'MISSING_MARKET_DATA') {
-    return `${assetLabel} market snapshot is unavailable`;
-  }
-
-  if (reason === 'RISK_REVIEW_REQUIRED') {
-    return `${assetLabel} risk review is needed`;
-  }
-
-  if (reason === 'ENTRY_REVIEW_REQUIRED') {
-    return `${assetLabel} entry review is needed`;
-  }
-
-  if (reason === 'ADD_BUY_REVIEW_REQUIRED') {
-    return `${assetLabel} add-buy review is needed`;
-  }
-
-  if (reason === 'REDUCE_REVIEW_REQUIRED') {
-    return `${assetLabel} reduce review is needed`;
-  }
-
-  if (reason === 'STATE_UPDATE_REMINDER') {
-    return `${assetLabel} state update reminder is needed`;
-  }
-
-  return `${assetLabel} stored state needs correction`;
+  return locale === "ko"
+    ? `${assetLabel} \uAE30\uB85D \uC0C1\uD0DC \uC218\uC815\uC774 \uD544\uC694\uD569\uB2C8\uB2E4`
+    : `${assetLabel} stored state needs correction`;
 }
 
 function send(chatId: number, text: string, replyMarkup?: TelegramReplyMarkup): TelegramOutgoingAction {
-  return replyMarkup
-    ? { kind: 'sendMessage', chatId, text, replyMarkup }
-    : { kind: 'sendMessage', chatId, text };
+  return replyMarkup ? { kind: "sendMessage", chatId, text, replyMarkup } : { kind: "sendMessage", chatId, text };
 }
 
 function answer(callbackQueryId: string, text?: string): TelegramOutgoingAction {
-  return text
-    ? { kind: 'answerCallbackQuery', callbackQueryId, text }
-    : { kind: 'answerCallbackQuery', callbackQueryId };
-}
-
-function formatBoolean(value: boolean | null): string {
-  if (value === null) {
-    return 'n/a';
-  }
-
-  return value ? 'yes' : 'no';
+  return text ? { kind: "answerCallbackQuery", callbackQueryId, text } : { kind: "answerCallbackQuery", callbackQueryId };
 }

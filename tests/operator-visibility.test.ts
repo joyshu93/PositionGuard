@@ -173,6 +173,11 @@ assert(
     renderLastDecisionMessage(lastDecisionView).includes("Note: operator follow-up is required"),
   "Rendered last-decision message should explain the verdict and cooldown skip.",
 );
+assert(
+  renderLastDecisionMessage(lastDecisionView, "ko").includes("\uCD5C\uADFC \uACB0\uC815:") &&
+    renderLastDecisionMessage(lastDecisionView, "ko").includes("\uD310\uC815: \uC870\uCE58 \uD544\uC694"),
+  "Last-decision renderer should localize Korean output.",
+);
 
 const hourlyHealthView = buildHourlyHealthView({
   decisions: [cooldownDecision, marketFailureDecision, setupBlockedDecision],
@@ -205,4 +210,9 @@ assert(
     renderHourlyHealthMessage(hourlyHealthView).includes("Latest reminder: eligible yes | sent no | repeated 2 | suppressed cooldown") &&
     renderHourlyHealthMessage(hourlyHealthView).includes("Latest market issue: Timeout while calling Upbit."),
   "Rendered hourly health should surface the latest verdict and market-data issue.",
+);
+assert(
+  renderHourlyHealthMessage(hourlyHealthView, "ko").includes("\uC2DC\uAC04\uBCC4 \uC0C1\uD0DC:") &&
+    renderHourlyHealthMessage(hourlyHealthView, "ko").includes("\uCD5C\uADFC \uD310\uC815: \uC870\uCE58 \uD544\uC694"),
+  "Hourly-health renderer should localize Korean output.",
 );

@@ -1,6 +1,7 @@
 import { boolToInt, intToBool, nowIso } from "./db.js";
 import type { D1DatabaseLike } from "./db.js";
 import type { UserProfileInput, UserRecord } from "../types/persistence.js";
+import { resolveUserLocale } from "../i18n/index.js";
 
 type UserRow = {
   id: number;
@@ -8,6 +9,7 @@ type UserRow = {
   telegram_chat_id: string | null;
   username: string | null;
   display_name: string | null;
+  preferred_language: "ko" | "en" | null;
   tracked_assets: "BTC" | "ETH" | "BTC,ETH";
   sleep_mode: number;
   onboarding_complete: number;
@@ -21,6 +23,7 @@ const mapUserRow = (row: UserRow): UserRecord => ({
   telegramChatId: row.telegram_chat_id,
   username: row.username,
   displayName: row.display_name,
+  locale: row.preferred_language,
   trackedAssets: row.tracked_assets,
   sleepMode: intToBool(row.sleep_mode),
   onboardingComplete: intToBool(row.onboarding_complete),
@@ -35,6 +38,7 @@ export const getUserByTelegramId = async (
   const row = await db
     .prepare(
       `SELECT id, telegram_user_id, telegram_chat_id, username, display_name, tracked_assets, sleep_mode, onboarding_complete, created_at, updated_at
+             , preferred_language
        FROM users
        WHERE telegram_user_id = ?`,
     )
@@ -50,18 +54,23 @@ export const upsertUser = async (
 ): Promise<UserRecord> => {
   const existing = await getUserByTelegramId(db, input.telegramUserId);
   const timestamp = nowIso();
+  const resolvedLocale = resolveUserLocale(
+    input.locale ?? existing?.locale ?? null,
+    input.telegramLanguageCode ?? null,
+  );
 
   if (!existing) {
     await db
       .prepare(
-        `INSERT INTO users (telegram_user_id, telegram_chat_id, username, display_name, tracked_assets, sleep_mode, onboarding_complete, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?)`,
+        `INSERT INTO users (telegram_user_id, telegram_chat_id, username, display_name, preferred_language, tracked_assets, sleep_mode, onboarding_complete, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?)`,
       )
       .bind(
         input.telegramUserId,
         input.telegramChatId ?? null,
         input.username ?? null,
         input.displayName ?? null,
+        resolvedLocale,
         input.trackedAssets ?? "BTC,ETH",
         timestamp,
         timestamp,
@@ -81,6 +90,7 @@ export const upsertUser = async (
        SET telegram_chat_id = COALESCE(?, telegram_chat_id),
            username = COALESCE(?, username),
            display_name = COALESCE(?, display_name),
+           preferred_language = COALESCE(preferred_language, ?),
            tracked_assets = COALESCE(?, tracked_assets),
            updated_at = ?
        WHERE telegram_user_id = ?`,
@@ -89,6 +99,7 @@ export const upsertUser = async (
       input.telegramChatId ?? null,
       input.username ?? null,
       input.displayName ?? null,
+      resolvedLocale,
       input.trackedAssets ?? null,
       timestamp,
       input.telegramUserId,
@@ -101,6 +112,7 @@ export const upsertUser = async (
   }
   return updated;
 };
+
 
 export const setUserSleepMode = async (
   db: D1DatabaseLike,
@@ -156,6 +168,27 @@ export const setUserTrackedAssets = async (
        WHERE telegram_user_id = ?`,
     )
     .bind(trackedAssets, nowIso(), telegramUserId)
+    .run();
+
+  const user = await getUserByTelegramId(db, telegramUserId);
+  if (!user) {
+    throw new Error("User not found");
+  }
+  return user;
+};
+
+export const setUserLocale = async (
+  db: D1DatabaseLike,
+  telegramUserId: string,
+  locale: "ko" | "en",
+): Promise<UserRecord> => {
+  await db
+    .prepare(
+      `UPDATE users
+       SET preferred_language = ?, updated_at = ?
+       WHERE telegram_user_id = ?`,
+    )
+    .bind(locale, nowIso(), telegramUserId)
     .run();
 
   const user = await getUserByTelegramId(db, telegramUserId);

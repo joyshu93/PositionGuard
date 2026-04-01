@@ -29,6 +29,7 @@ assertEqual(
 );
 
 const emptyStatus = renderStatusMessage(null);
+const emptyStatusKo = renderStatusMessage(null, [], "ko");
 assert(
   emptyStatus.includes("Tracked assets default to BTC and ETH until you choose otherwise."),
   "Empty status should explain the default tracked assets.",
@@ -40,6 +41,11 @@ assert(
 assert(
   emptyStatus.includes("This bot records manual state only. It does not execute trades."),
   "Empty status should preserve record-only wording.",
+);
+assert(
+  emptyStatusKo.includes("\uC544\uC9C1 \uC800\uC7A5\uB41C \uC124\uC815\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.") &&
+    emptyStatusKo.includes("/setcash <amount>"),
+  "Korean empty status should render localized guidance.",
 );
 
 const fullStatus = renderStatusMessage({
@@ -80,6 +86,45 @@ const fullStatus = renderStatusMessage({
     },
   },
 });
+const fullStatusKo = renderStatusMessage({
+  ...baseState,
+  user: {
+    ...baseState.user,
+    trackedAssets: "BTC,ETH",
+    locale: "ko",
+  },
+  accountState: {
+    id: 10,
+    userId: 1,
+    availableCash: 500000,
+    reportedAt: "2026-01-01T00:00:00.000Z",
+    source: "USER_REPORTED",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  },
+  positions: {
+    BTC: {
+      id: 11,
+      userId: 1,
+      asset: "BTC",
+      quantity: 0.25,
+      averageEntryPrice: 95000000,
+      reportedAt: "2026-01-01T00:00:00.000Z",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    },
+    ETH: {
+      id: 12,
+      userId: 1,
+      asset: "ETH",
+      quantity: 1.2,
+      averageEntryPrice: 3500000,
+      reportedAt: "2026-01-01T00:00:00.000Z",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    },
+  },
+}, [], "ko");
 
 assert(fullStatus.includes("Tracked assets: BTC, ETH"), "Full status should report tracked assets.");
 assert(fullStatus.includes("Setup readiness: ready"), "Full status should report ready setup.");
@@ -87,6 +132,11 @@ assert(fullStatus.includes("Sleep mode: off"), "Full status should render sleep 
 assert(fullStatus.includes("BTC spot record: 0.25 @ avg 95,000,000 KRW"), "Full status should render BTC state.");
 assert(fullStatus.includes("ETH spot record: 1.2 @ avg 3,500,000 KRW"), "Full status should render ETH state.");
 assert(fullStatus.includes("Missing next steps: none"), "Full status should show no missing next steps.");
+assert(
+  fullStatusKo.includes("\uCD94\uC801 \uC790\uC0B0: BTC, ETH") &&
+    fullStatusKo.includes("\uC124\uC815 \uC900\uBE44\uB3C4: \uC900\uBE44 \uC644\uB8CC"),
+  "Full status should render localized Korean labels when requested.",
+);
 
 const statusWithAlerts = renderStatusMessage(
   {

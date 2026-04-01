@@ -88,6 +88,7 @@ The migration history now covers:
 - `position_state`
 - `decision_logs`
 - `notification_events`
+- persisted user locale preference for `ko` / `en`
 - schema guards for non-negative cash and position values
 - tracked-asset preference persistence for `BTC`, `ETH`, or both
 
@@ -257,6 +258,7 @@ Supported bot commands:
 
 - `/start`
 - `/help`
+- `/language <ko|en>`
 - `/status`
 - `/track`
 - `/setcash`
@@ -271,6 +273,8 @@ Current behavior:
 
 - `/start` explains the product boundary
 - `/help` shows supported commands
+- `/language <ko|en>` saves a persistent user-facing language preference
+- Telegram `language_code` is only used as the initial fallback when a user has no saved language yet
 - `/track <BTC|ETH|BOTH>` records which spot assets the user wants PositionGuard to track
 - inline callback buttons let the user choose tracked assets, inspect setup progress, record cash, open BTC/ETH spot-record shortcuts, refresh `/status`, and open `/lastdecision` and `/hourlyhealth`
 - `/status` reads stored user-reported state
@@ -282,6 +286,7 @@ Current behavior:
 - `/sleep on` and `/sleep off` toggle alert quiet mode
 - `/lastalert` inspects the most recent sent alert snapshot and its cooldown window, including state-update reminders when they were the latest alert
 - decision summaries may now explicitly say `entry review`, `add-buy review`, or `partial reduction / exit plan review`, but they always remain non-execution coaching language
+- user-facing Telegram messages render in either Korean or English, but each message stays single-language
 
 Any future buy/sell-related command must be record-only and must not execute trades.
 

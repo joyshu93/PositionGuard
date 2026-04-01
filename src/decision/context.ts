@@ -32,6 +32,7 @@ export function buildDecisionContext(
       telegramChatId: params.userState.user.telegramChatId,
       username: params.userState.user.username,
       displayName: params.userState.user.displayName,
+      locale: params.userState.user.locale ?? null,
       trackedAssets: params.userState.user.trackedAssets,
       sleepModeEnabled: params.userState.user.sleepModeEnabled,
       onboardingComplete: params.userState.user.onboardingComplete,

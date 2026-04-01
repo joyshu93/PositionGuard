@@ -1,3 +1,5 @@
+import type { SupportedLocale } from "../domain/types.js";
+
 export type TelegramChatType = 'private' | 'group' | 'supergroup' | 'channel';
 
 export interface TelegramUser {
@@ -56,6 +58,7 @@ export interface TelegramUserStateSnapshot {
   isSleeping: boolean;
   cash: number | null;
   trackedAssets: "BTC" | "ETH" | "BTC,ETH";
+  locale?: SupportedLocale | null;
 }
 
 export type TelegramTrackedAssetsSelection = "BTC" | "ETH" | "BOTH";
@@ -75,11 +78,13 @@ export interface TelegramUserProfile {
   telegramChatId: number;
   username?: string;
   displayName?: string;
+  languageCode?: string;
+  preferredLocale?: SupportedLocale;
 }
 
 export interface TelegramStateStore {
   getUserState(telegramUserId: number): Promise<TelegramUserStateSnapshot | null>;
-  upsertUserState(input: TelegramUserProfile): Promise<void>;
+  upsertUserState(input: TelegramUserProfile): Promise<SupportedLocale | null | void>;
   setCash(telegramUserId: number, cash: number): Promise<void>;
   setPosition(input: {
     telegramUserId: number;
@@ -88,10 +93,11 @@ export interface TelegramStateStore {
     averageEntryPrice: number;
   }): Promise<void>;
   setSleepMode(telegramUserId: number, isSleeping: boolean): Promise<void>;
+  setLocale?(telegramUserId: number, locale: SupportedLocale): Promise<SupportedLocale>;
 }
 
 export interface TelegramStatusProvider {
-  getStatus(telegramUserId: number): Promise<string>;
+  getStatus(telegramUserId: number, locale: SupportedLocale): Promise<string>;
 }
 
 export interface TelegramNotificationSnapshot {

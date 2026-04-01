@@ -39,6 +39,7 @@ The future decision engine should receive a context object with these categories
 
 ### User Setup
 - telegram user identity
+- user-facing locale preference, limited to `ko` or `en`
 - sleep mode preference
 - tracked asset preference, limited to BTC, ETH, or both
 - whether onboarding is complete
@@ -162,6 +163,7 @@ Notification behavior under this contract should remain conservative:
 - prefer silence over repeated or low-confidence alerts
 - suppress duplicate alerts for the same user, asset, and reason within a cooldown window
 - respect sleep mode strictly
+- preserve the binary contract exactly: `ACTION_NEEDED` sends an alert, everything else remains silent
 - keep message text short, concrete, and record-oriented
 - expose recent alert state through lightweight debug inspection, such as `/lastalert`
 

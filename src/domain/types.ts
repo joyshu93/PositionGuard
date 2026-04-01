@@ -2,6 +2,7 @@ export type SupportedAsset = "BTC" | "ETH";
 export type SupportedMarket = "KRW-BTC" | "KRW-ETH";
 export type SupportedTimeframe = "1h" | "4h" | "1d";
 export type TrackedAssetPreference = "BTC" | "ETH" | "BTC,ETH";
+export type SupportedLocale = "ko" | "en";
 
 export interface User {
   id: number;
@@ -9,6 +10,7 @@ export interface User {
   telegramChatId: string | null;
   username: string | null;
   displayName: string | null;
+  locale?: SupportedLocale | null;
   trackedAssets: TrackedAssetPreference;
   sleepModeEnabled: boolean;
   onboardingComplete: boolean;
@@ -77,6 +79,7 @@ export interface DecisionContext {
     | "telegramChatId"
     | "username"
     | "displayName"
+    | "locale"
     | "trackedAssets"
     | "sleepModeEnabled"
     | "onboardingComplete"

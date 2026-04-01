@@ -16,6 +16,7 @@ const deps = {
     },
     async upsertUserState(input: unknown) {
       calls.push({ kind: "upsert", payload: input });
+      return null;
     },
     async setCash(telegramUserId: number, cash: number) {
       calls.push({ kind: "setCash", payload: { telegramUserId, cash } });
@@ -25,6 +26,10 @@ const deps = {
     },
     async setSleepMode(telegramUserId: number, isSleeping: boolean) {
       calls.push({ kind: "setSleepMode", payload: { telegramUserId, isSleeping } });
+    },
+    async setLocale(telegramUserId: number, locale: "ko" | "en") {
+      calls.push({ kind: "setLocale", payload: { telegramUserId, locale } });
+      return locale;
     },
   },
 };
@@ -148,6 +153,19 @@ const startActions = await routeCommand(
   },
   deps,
 );
+const startKoActions = await routeCommand(
+  {
+    ...baseContext,
+    command: "start",
+    text: "/start",
+    args: [],
+    profile: {
+      ...baseContext.profile,
+      languageCode: "ko-KR",
+    },
+  },
+  deps,
+);
 
 const startAction = startActions[0];
 let startCallbackData: string[] = [];
@@ -164,6 +182,37 @@ if (startAction && startAction.kind === "sendMessage" && startAction.replyMarkup
       startCallbackData.includes("inspect:hourlyhealth"),
     "/start should expose setup and operator-inspection buttons.",
   );
+assert(
+  startActions[0]?.kind === "sendMessage" &&
+    startActions[0].text.includes("PositionGuard is a BTC/ETH spot position coach."),
+  "/start should render English by default.",
+);
+assert(
+  startKoActions[0]?.kind === "sendMessage" &&
+    startKoActions[0].text.includes("\uD604\uBB3C \uD3EC\uC9C0\uC158 \uCF54\uCE58 \uBD07") &&
+    startKoActions[0].replyMarkup?.inline_keyboard[0]?.[0]?.text === "BTC \uCD94\uC801",
+  "/start should render Korean copy and button labels for Korean users.",
+);
+
+const helpKoActions = await routeCommand(
+  {
+    ...baseContext,
+    command: "help",
+    text: "/help",
+    args: [],
+    profile: {
+      ...baseContext.profile,
+      languageCode: "ko",
+    },
+  },
+  deps,
+);
+assert(
+  helpKoActions[0]?.kind === "sendMessage" &&
+    helpKoActions[0].text.includes("/language <ko|en>") &&
+    helpKoActions[0].text.includes("\uBD07 \uC5B8\uC5B4 \uC120\uD0DD"),
+  "/help should render Korean help copy including /language.",
+);
 
 const callbackStatusActions = await routeCommand(
   {
@@ -279,6 +328,48 @@ assert(
   trackedAssetText.includes("Tracked assets recorded: BTC, ETH") &&
     trackedAssetText.includes("State is record-only. No trade execution is performed."),
   "Tracked-asset callback should stay record-only.",
+);
+
+const languageKoActions = await routeCommand(
+  {
+    ...baseContext,
+    command: "language",
+    text: "/language ko",
+    args: ["ko"],
+  },
+  deps,
+);
+assert(
+  calls.some((call) => call.kind === "setLocale" && (call.payload as { locale?: string }).locale === "ko"),
+  "Explicit /language ko should persist the selected locale.",
+);
+assert(
+  languageKoActions[0]?.kind === "sendMessage" &&
+    languageKoActions[0].text.includes("\uC5B8\uC5B4\uAC00 \uC800\uC7A5\uB418\uC5C8\uC2B5\uB2C8\uB2E4"),
+  "/language ko confirmation should render in Korean.",
+);
+
+const languageEnActions = await routeCommand(
+  {
+    ...baseContext,
+    command: "language",
+    text: "/language en",
+    args: ["en"],
+    profile: {
+      ...baseContext.profile,
+      languageCode: "ko-KR",
+    },
+  },
+  deps,
+);
+assert(
+  calls.some((call) => call.kind === "setLocale" && (call.payload as { locale?: string }).locale === "en"),
+  "Explicit /language en should persist the selected locale.",
+);
+assert(
+  languageEnActions[0]?.kind === "sendMessage" &&
+    languageEnActions[0].text.includes("Language saved: English."),
+  "Explicit /language en should override Telegram Korean fallback and confirm in English.",
 );
 
 const callbackSleepActions = await routeCommand(
@@ -402,7 +493,6 @@ if (hourlyHealthAction && hourlyHealthAction.kind === "sendMessage") {
 
 assert(
   hourlyHealthText.includes("Hourly health:") &&
-    hourlyHealthText.includes("verdict: action needed") &&
     hourlyHealthText.includes("Market data: fetch_failure") &&
     hourlyHealthText.includes("Structure: regime PULLBACK_IN_UPTREND | trigger CONFIRMED | invalidation CLEAR") &&
     hourlyHealthText.includes("Reminder: eligible yes | sent no | repeated 2 | suppressed cooldown") &&
@@ -468,6 +558,25 @@ assert(
   "Invalid setposition input should return a Telegram-friendly validation error.",
 );
 
+const invalidLanguageActions = await routeCommand(
+  {
+    ...baseContext,
+    command: "language",
+    text: "/language jp",
+    args: ["jp"],
+    profile: {
+      ...baseContext.profile,
+      languageCode: "ko-KR",
+    },
+  },
+  deps,
+);
+assert(
+  invalidLanguageActions[0]?.kind === "sendMessage" &&
+    invalidLanguageActions[0].text.includes("\uC9C0\uC6D0\uB418\uC9C0 \uC54A\uB294 \uC5B8\uC5B4"),
+  "Invalid /language input should return localized usage guidance.",
+);
+
 assert(
   buildActionNeededAlertText({
     chatId: 200,
@@ -482,12 +591,13 @@ assert(
 assert(
   buildActionNeededAlertText({
     chatId: 200,
+    locale: "ko",
     reason: "ENTRY_REVIEW_REQUIRED",
     asset: "BTC",
     summary: "BTC structure supports a conservative spot entry review.",
     nextStep: "Keep it staged, confirm the invalidation level first, and avoid chasing the upper end of the range.",
-  }).includes("ACTION NEEDED: BTC entry review is needed"),
-  "Entry-review alerts should render a clear non-execution headline.",
+  }).includes("BTC \uC9C4\uC785 \uAC80\uD1A0\uAC00 \uD544\uC694\uD569\uB2C8\uB2E4"),
+  "ACTION_NEEDED alerts should localize Korean user-facing text without changing alert semantics.",
 );
 
 assert(

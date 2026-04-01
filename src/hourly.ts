@@ -205,6 +205,7 @@ async function evaluateNotificationState(params: {
     decision: params.decision,
     asset: params.asset,
     market: params.market,
+    locale: params.userState.user.locale ?? null,
     nowIso,
     hasChatId: params.userState.user.telegramChatId !== null,
     sleepModeEnabled: params.userState.user.sleepModeEnabled,
@@ -341,6 +342,7 @@ async function evaluateReminderState(params: {
   const plan = buildStateUpdateReminderPlan({
     assessment,
     asset: params.asset,
+    locale: params.userState.user.locale ?? null,
     nowIso: new Date().toISOString(),
     hasChatId: params.userState.user.telegramChatId !== null,
     sleepModeEnabled: params.userState.user.sleepModeEnabled,

@@ -11,11 +11,11 @@ import { handleTelegramWebhook } from "./telegram.js";
 import {
   getUserByTelegramUserId,
   ensureTelegramUser,
-  getLatestDecisionRecordForUser,
   getTelegramStatusSnapshot,
   getUserStateBundleByUserId,
   listRecentDecisionRecordsForUser,
   listRecentNotificationEventSummaries,
+  setLocaleByTelegramUserId,
   setTrackedAssetsByTelegramUserId,
   setCashByTelegramUserId,
   setPositionByTelegramUserId,
@@ -28,6 +28,7 @@ import {
   buildHourlyHealthView,
   buildLastDecisionView,
 } from "./operator-visibility.js";
+import { resolveUserLocale } from "./i18n/index.js";
 
 const jsonHeaders = {
   "content-type": "application/json; charset=utf-8",
@@ -129,15 +130,19 @@ async function handleFetch(
               isSleeping: snapshot.user.sleepModeEnabled,
               cash: snapshot.accountState?.availableCash ?? null,
               trackedAssets: snapshot.user.trackedAssets,
+              locale: snapshot.user.locale ?? null,
             };
           },
           async upsertUserState(input) {
-            await ensureTelegramUser(env.DB, {
+            const user = await ensureTelegramUser(env.DB, {
               telegramUserId: String(input.telegramUserId),
               telegramChatId: String(input.telegramChatId),
               username: input.username ?? null,
               displayName: input.displayName ?? null,
+              languageCode: input.languageCode ?? null,
+              locale: input.preferredLocale ?? null,
             });
+            return user.locale ?? null;
           },
           async setCash(telegramUserId, cash) {
             await setCashByTelegramUserId(env.DB, String(telegramUserId), cash);
@@ -155,6 +160,10 @@ async function handleFetch(
               String(telegramUserId),
               isSleeping,
             );
+          },
+          async setLocale(telegramUserId, locale) {
+            const user = await setLocaleByTelegramUserId(env.DB, String(telegramUserId), locale);
+            return user.locale ?? locale;
           },
         },
         onboardingProvider: {
@@ -323,13 +332,13 @@ async function handleFetch(
           },
         },
         statusProvider: {
-          async getStatus(telegramUserId) {
+          async getStatus(telegramUserId, locale) {
             const statusSnapshot = await getTelegramStatusSnapshot(
               env.DB,
               String(telegramUserId),
             );
             if (!statusSnapshot) {
-              return renderStatusMessage(null);
+              return renderStatusMessage(null, [], locale);
             }
 
             const userState = await getUserStateBundleByUserId(
@@ -351,6 +360,7 @@ async function handleFetch(
                 createdAt: event.createdAt,
                 suppressedBy: event.suppressedBy,
               })),
+              locale,
             );
           },
         },
@@ -385,7 +395,9 @@ async function handleFetch(
               payload &&
               typeof (payload as { summary?: unknown }).summary === "string"
                 ? ((payload as { summary: string }).summary)
-                : "ACTION_NEEDED alert sent.";
+                : resolveUserLocale(statusSnapshot.user.locale ?? null) === "ko"
+                  ? "ACTION_NEEDED 알림이 전송되었습니다."
+                  : "ACTION_NEEDED alert sent.";
             const reason = inferTelegramAlertReason(
               payload &&
                 typeof (payload as { alertReason?: unknown }).alertReason === "string"

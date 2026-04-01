@@ -2,6 +2,7 @@ import type {
   AccountState,
   DecisionLogRecord,
   PositionState,
+  SupportedLocale,
   SupportedAsset,
   SupportedMarket,
   TrackedAssetPreference,
@@ -45,6 +46,7 @@ import {
 } from "./user-state.js";
 import {
   getUserByTelegramId,
+  setUserLocale,
   setUserOnboardingComplete,
   setUserSleepMode,
   setUserTrackedAssets,
@@ -57,6 +59,8 @@ interface TelegramProfileInput {
   telegramChatId: string;
   username?: string | null;
   displayName?: string | null;
+  languageCode?: string | null;
+  locale?: SupportedLocale | null;
 }
 
 export interface RecordDecisionLogParams {
@@ -107,6 +111,8 @@ export async function ensureTelegramUser(
     telegramChatId: input.telegramChatId,
     username: input.username ?? null,
     displayName: input.displayName ?? null,
+    telegramLanguageCode: input.languageCode ?? null,
+    locale: input.locale ?? null,
   });
 
   return mapUserRecord(record);
@@ -152,6 +158,15 @@ export async function setTrackedAssetsByTelegramUserId(
 ): Promise<User> {
   const record = await setUserTrackedAssets(db, telegramUserId, trackedAssets);
   await syncUserSetupCompleteness(db, telegramUserId);
+  return mapUserRecord(record);
+}
+
+export async function setLocaleByTelegramUserId(
+  db: D1DatabaseLike,
+  telegramUserId: string,
+  locale: SupportedLocale,
+): Promise<User> {
+  const record = await setUserLocale(db, telegramUserId, locale);
   return mapUserRecord(record);
 }
 
@@ -343,6 +358,7 @@ function mapUserRecord(record: UserRecord): User {
     telegramChatId: record.telegramChatId,
     username: record.username,
     displayName: record.displayName,
+    locale: record.locale,
     trackedAssets: record.trackedAssets,
     sleepModeEnabled: record.sleepMode,
     onboardingComplete: record.onboardingComplete,

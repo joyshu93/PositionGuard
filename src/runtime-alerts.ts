@@ -1,9 +1,11 @@
 import type {
   ActionNeededReason,
   DecisionContext,
+  SupportedLocale,
   SupportedAsset,
   SupportedMarket,
 } from "./domain/types.js";
+import { getMessages, localizeNoExecution, resolveUserLocale } from "./i18n/index.js";
 
 export const ALERT_NOTIFICATION_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 export const SETUP_ALERT_NOTIFICATION_COOLDOWN_MS = 12 * 60 * 60 * 1000;
@@ -42,6 +44,7 @@ export interface AlertPlan {
 }
 
 export interface AlertMessageInput {
+  locale?: SupportedLocale | null;
   asset: SupportedAsset;
   market: SupportedMarket;
   summary: string;
@@ -90,13 +93,16 @@ export function buildAlertReasonKey(input: AlertMessageInput): string {
 }
 
 export function buildActionNeededMessage(input: AlertMessageInput): string {
+  const locale = resolveUserLocale(input.locale ?? null);
+  const messages = getMessages(locale);
   const topReasons = input.reasons.slice(0, 3);
+  const headline = messages.alerts.actionNeededHeadline(`${input.asset} spot`);
   const lines = [
-    `ACTION NEEDED: ${input.asset} spot`,
+    headline,
     `${input.market}`,
     input.summary,
     ...topReasons.map((reason) => `- ${reason}`),
-    "No trade was executed. This is a manual record-only alert.",
+    `${localizeNoExecution(locale)} ${messages.alerts.manualRecordOnly}`,
   ];
   return lines.join("\n");
 }
@@ -193,6 +199,7 @@ export function assessStateUpdateReminder(input: {
 export function buildStateUpdateReminderPlan(input: {
   assessment: ReminderAssessment;
   asset: SupportedAsset;
+  locale?: SupportedLocale | null;
   nowIso: string;
   hasChatId: boolean;
   sleepModeEnabled: boolean;
@@ -222,6 +229,7 @@ export function buildStateUpdateReminderPlan(input: {
   );
   const message = buildStateUpdateReminderMessage({
     asset: input.asset,
+    locale: input.locale ?? null,
     signalReason: input.assessment.signalReason,
   });
 
@@ -368,6 +376,7 @@ export function buildActionNeededAlertPlan(input: {
   decision: ActionNeededDecisionLike;
   asset: SupportedAsset;
   market: SupportedMarket;
+  locale?: SupportedLocale | null;
   nowIso: string;
   hasChatId: boolean;
   sleepModeEnabled: boolean;
@@ -391,6 +400,7 @@ export function buildActionNeededAlertPlan(input: {
   const message =
     input.decision.alert?.message ??
     buildActionNeededMessage({
+      locale: input.locale ?? null,
       asset: input.asset,
       market: input.market,
       summary: input.decision.summary,
@@ -469,33 +479,40 @@ function buildStateUpdateReminderReasonKey(
 
 function buildStateUpdateReminderMessage(input: {
   asset: SupportedAsset;
+  locale?: SupportedLocale | null;
   signalReason: ActionNeededReason;
 }): string {
+  const locale = resolveUserLocale(input.locale ?? null);
+  const messages = getMessages(locale);
   return [
-    `ACTION NEEDED: ${input.asset} state update reminder`,
-    `PositionGuard is still seeing the same ${describeSignalReason(input.signalReason)} and the same stored manual state.`,
-    "If you already bought or sold, update your recorded position with /setposition.",
-    "If your available cash changed, update it with /setcash.",
-    "PositionGuard only sees your stored manual state.",
-    "No trade was executed.",
-    "This is record-only guidance.",
+    messages.alerts.actionNeededHeadline(messages.alerts.stateUpdateReminder(input.asset)),
+    messages.alerts.stateReminder(input.asset, describeSignalReason(input.signalReason, locale)),
+    messages.alerts.stateReminderPosition,
+    messages.alerts.stateReminderCash,
+    messages.alerts.stateReminderStoredState,
+    localizeNoExecution(locale),
+    messages.alerts.stateReminderRecordOnly,
   ].join("\n");
 }
 
-function describeSignalReason(reason: ActionNeededReason): string {
+function describeSignalReason(
+  reason: ActionNeededReason,
+  localeInput?: SupportedLocale | null,
+): string {
+  const locale = resolveUserLocale(localeInput ?? null);
   if (reason === "ENTRY_REVIEW_REQUIRED") {
-    return "entry review";
+    return locale === "ko" ? "\uC9C4\uC785 \uAC80\uD1A0" : "entry review";
   }
 
   if (reason === "ADD_BUY_REVIEW_REQUIRED") {
-    return "add-buy review";
+    return locale === "ko" ? "\uCD94\uAC00\uB9E4\uC218 \uAC80\uD1A0" : "add-buy review";
   }
 
   if (reason === "REDUCE_REVIEW_REQUIRED") {
-    return "reduce review";
+    return locale === "ko" ? "\uCD95\uC18C \uAC80\uD1A0" : "reduce review";
   }
 
-  return "coaching signal";
+  return locale === "ko" ? "\uCF54\uCE6D \uC2E0\uD638" : "coaching signal";
 }
 
 function extractAlertReasonFromDecisionLog(

@@ -14,6 +14,7 @@ import {
   type MarketStructureAnalysis,
   type PositionStructureAnalysis,
 } from "./market-structure.js";
+import { localizeNoExecution, resolveUserLocale } from "../i18n/index.js";
 
 type SetupKind = "ENTRY" | "ADD_BUY" | "REDUCE" | "NONE";
 type BullishPath = "PULLBACK_ENTRY" | "RECLAIM_ENTRY" | "PULLBACK_ADD" | "STRENGTH_ADD" | null;
@@ -51,6 +52,7 @@ export function runDecisionEngine(context: DecisionContext): DecisionResult {
 }
 
 function evaluateEntry(context: DecisionContext, analysis: MarketStructureAnalysis, hasCash: boolean): DecisionResult {
+  const locale = resolveUserLocale(context.user.locale ?? null);
   const path = getBullishPath(analysis, false);
   const setup = assessEntrySetup(analysis, hasCash, path);
   const trigger = assessBullishTrigger(analysis, path);
@@ -59,24 +61,33 @@ function evaluateEntry(context: DecisionContext, analysis: MarketStructureAnalys
   if (setup.state === "READY" && trigger.state === "CONFIRMED") {
     const continuation = path === "RECLAIM_ENTRY";
     const summary = continuation
-      ? `${analysis.asset} reclaim structure supports a conservative spot entry review.`
-      : `${analysis.asset} pullback structure supports a conservative spot entry review.`;
+      ? locale === "ko"
+        ? `${analysis.asset} 리클레임 구조가 보수적인 현물 진입 검토에 적합합니다.`
+        : `${analysis.asset} reclaim structure supports a conservative spot entry review.`
+      : locale === "ko"
+        ? `${analysis.asset} 눌림 구조가 보수적인 현물 진입 검토에 적합합니다.`
+        : `${analysis.asset} pullback structure supports a conservative spot entry review.`;
     return withAlert(context, diagnostics, "ENTRY_REVIEW_REQUIRED", `entry-review:${context.user.id}:${analysis.asset}:${bucketEntry(analysis, path)}`, summary, buildEntryReasons(analysis, context, setup, trigger, risk, path), [
-      `Action needed: ${summary}`,
+      locale === "ko" ? `조치 필요: ${summary}` : `Action needed: ${summary}`,
       continuation
-        ? "Keep it staged, confirm the invalidation level first, and only treat it as valid while the reclaim keeps holding."
-        : "Keep it staged, confirm the invalidation level first, and avoid chasing the upper end of the range.",
-      "No trade was executed.",
+        ? locale === "ko"
+          ? "분할 전제는 유지하고, 먼저 무효화 기준을 확인한 뒤 리클레임이 유지될 때만 유효하다고 보세요."
+          : "Keep it staged, confirm the invalidation level first, and only treat it as valid while the reclaim keeps holding."
+        : locale === "ko"
+          ? "분할 전제는 유지하고, 먼저 무효화 기준을 확인한 뒤 상단 추격은 피하세요."
+          : "Keep it staged, confirm the invalidation level first, and avoid chasing the upper end of the range.",
+      localizeNoExecution(locale),
     ].join("\n"));
   }
   return {
-    ...baseResult(context, "NO_ACTION", entryNoActionSummary(analysis, hasCash, setup, trigger, path), entryNoActionReasons(analysis, hasCash, setup, trigger, risk, path), false),
+    ...baseResult(context, "NO_ACTION", entryNoActionSummary(locale, analysis, hasCash, setup, trigger, path), entryNoActionReasons(analysis, hasCash, setup, trigger, risk, path), false),
     symbol: context.marketSnapshot?.market ?? null,
     diagnostics,
   };
 }
 
 function evaluateAddBuy(context: DecisionContext, analysis: PositionStructureAnalysis, hasCash: boolean): DecisionResult {
+  const locale = resolveUserLocale(context.user.locale ?? null);
   const path = getBullishPath(analysis, true);
   const setup = assessAddBuySetup(analysis, hasCash, path);
   const trigger = assessBullishTrigger(analysis, path);
@@ -85,24 +96,33 @@ function evaluateAddBuy(context: DecisionContext, analysis: PositionStructureAna
   if (setup.state === "READY" && trigger.state === "CONFIRMED") {
     const strengthAdd = path === "STRENGTH_ADD";
     const summary = strengthAdd
-      ? `${analysis.asset} valid reclaim strength may justify a staged add-buy review.`
-      : `${analysis.asset} pullback may justify a staged add-buy review.`;
+      ? locale === "ko"
+        ? `${analysis.asset} 유효한 리클레임 강세가 분할 추가매수 검토를 정당화할 수 있습니다.`
+        : `${analysis.asset} valid reclaim strength may justify a staged add-buy review.`
+      : locale === "ko"
+        ? `${analysis.asset} 눌림 구조가 분할 추가매수 검토를 정당화할 수 있습니다.`
+        : `${analysis.asset} pullback may justify a staged add-buy review.`;
     return withAlert(context, diagnostics, "ADD_BUY_REVIEW_REQUIRED", `add-buy-review:${context.user.id}:${analysis.asset}:${bucketAdd(analysis, path)}`, summary, buildAddBuyReasons(analysis, context, setup, trigger, risk, path), [
-      `Action needed: ${summary}`,
+      locale === "ko" ? `조치 필요: ${summary}` : `Action needed: ${summary}`,
       strengthAdd
-        ? "Only consider it if the reclaim still holds, the invalidation level is clear, and the add remains staged."
-        : "Only consider it if the invalidation level is clear, cash remains available, and you are not averaging into breakdown.",
-      "No trade was executed.",
+        ? locale === "ko"
+          ? "리클레임이 계속 유지되고 무효화 기준이 분명하며 추가가 분할 전제일 때만 검토하세요."
+          : "Only consider it if the reclaim still holds, the invalidation level is clear, and the add remains staged."
+        : locale === "ko"
+          ? "무효화 기준이 분명하고 현금이 남아 있으며 붕괴 구간으로 평균단가를 낮추는 상황이 아닐 때만 검토하세요."
+          : "Only consider it if the invalidation level is clear, cash remains available, and you are not averaging into breakdown.",
+      localizeNoExecution(locale),
     ].join("\n"));
   }
   return {
-    ...baseResult(context, "NO_ACTION", addNoActionSummary(analysis, hasCash, setup, trigger, path), addNoActionReasons(analysis, hasCash, setup, trigger, risk, path), false),
+    ...baseResult(context, "NO_ACTION", addNoActionSummary(locale, analysis, hasCash, setup, trigger, path), addNoActionReasons(analysis, hasCash, setup, trigger, risk, path), false),
     symbol: context.marketSnapshot?.market ?? null,
     diagnostics,
   };
 }
 
 function evaluateReduce(context: DecisionContext, analysis: PositionStructureAnalysis): DecisionResult {
+  const locale = resolveUserLocale(context.user.locale ?? null);
   const setup = assessReduceSetup(analysis);
   const trigger = assessReduceTrigger(analysis);
   const risk = assessRisk(analysis, analysis.riskLevel === "LOW" ? "ELEVATED" : analysis.riskLevel, "REDUCE");
@@ -110,18 +130,24 @@ function evaluateReduce(context: DecisionContext, analysis: PositionStructureAna
   const actionable = setup.state === "READY" && (trigger.state === "BEARISH_CONFIRMATION" || risk.level === "HIGH");
   if (!actionable) {
     return {
-      ...baseResult(context, "NO_ACTION", `${analysis.asset} structure is mixed, so the conservative posture is to observe and keep invalidation levels explicit.`, [formatPnL(analysis), `Regime: ${regimeText(analysis.regime)}.`, rangeText(analysis), invalidationText(risk), "Survival first remains the frame, but a reduce review is not forced yet."], false),
+      ...baseResult(context, "NO_ACTION", locale === "ko" ? `${analysis.asset} 구조가 혼재돼 있어, 보수적으로는 관찰을 유지하고 무효화 기준을 분명히 두는 편이 낫습니다.` : `${analysis.asset} structure is mixed, so the conservative posture is to observe and keep invalidation levels explicit.`, [formatPnL(analysis), `Regime: ${regimeText(analysis.regime)}.`, rangeText(analysis), invalidationText(risk), "Survival first remains the frame, but a reduce review is not forced yet."], false),
       symbol: context.marketSnapshot?.market ?? null,
       diagnostics,
     };
   }
   const summary = analysis.breakdown1d || risk.level === "HIGH"
-    ? `${analysis.asset} structure has lost higher-timeframe support; review sell-side risk management.`
-    : `${analysis.asset} structure is weakening; review partial reduction or exit plan.`;
+    ? locale === "ko"
+      ? `${analysis.asset} 구조가 상위 시간대 지지를 잃었습니다. 매도 측 리스크 관리를 검토하세요.`
+      : `${analysis.asset} structure has lost higher-timeframe support; review sell-side risk management.`
+    : locale === "ko"
+      ? `${analysis.asset} 구조가 약해지고 있습니다. 부분 축소 또는 이탈 계획을 검토하세요.`
+      : `${analysis.asset} structure is weakening; review partial reduction or exit plan.`;
   return withAlert(context, diagnostics, "REDUCE_REVIEW_REQUIRED", `reduce-review:${context.user.id}:${analysis.asset}:${bucketReduce(analysis)}`, summary, [formatPnL(analysis), `Regime: ${regimeText(analysis.regime)}.`, rangeText(analysis), invalidationText(risk), `What broke: ${setup.supports[0] ?? "higher timeframe support is weakening"}.`, `Trigger: ${trigger.confirmed[0] ?? trigger.missing[0] ?? "bearish confirmation is building"}.`, "Survival first: review reduce-side risk, sell review, or exit plan review before hoping for recovery."], [
-    `Action needed: ${summary}`,
-    "Review the invalidation level, cash-risk posture, and whether a reduce review or exit plan review is now required.",
-    "No trade was executed.",
+    locale === "ko" ? `조치 필요: ${summary}` : `Action needed: ${summary}`,
+    locale === "ko"
+      ? "무효화 기준, 현금 리스크 노출, 그리고 지금 축소 검토나 이탈 계획 검토가 필요한지 다시 확인하세요."
+      : "Review the invalidation level, cash-risk posture, and whether a reduce review or exit plan review is now required.",
+    localizeNoExecution(locale),
   ].join("\n"));
 }
 
@@ -257,7 +283,14 @@ function buildEntryReasons(analysis: MarketStructureAnalysis, context: DecisionC
   return [`Available cash on record: ${cash(context)} KRW.`, `Regime: ${regimeText(analysis.regime)}.`, rangeText(analysis), invalidationText(risk), path === "RECLAIM_ENTRY" ? "No chase buying still applies, but a valid reclaim is not treated the same as a late pullback miss." : "No chase buying: current structure is not pressing the upper part of the recent range.", `Setup: ${setup.supports[0] ?? setup.blockers[0] ?? "structure reviewed"}.`, `Trigger: ${trigger.confirmed[0] ?? trigger.missing[0] ?? "trigger reviewed"}.`];
 }
 
-function entryNoActionSummary(analysis: MarketStructureAnalysis, hasCash: boolean, setup: SetupEval, trigger: TriggerEval, path: BullishPath): string {
+function entryNoActionSummary(locale: "ko" | "en", analysis: MarketStructureAnalysis, hasCash: boolean, setup: SetupEval, trigger: TriggerEval, path: BullishPath): string {
+  if (locale === "ko") {
+    if (!hasCash) return `${analysis.asset} 현물 기록이 없고 새 검토에 쓸 현금 기록도 없습니다.`;
+    if (analysis.regime === "BREAKDOWN_RISK") return `${analysis.asset} 일봉 붕괴 리스크가 있어 지금은 보수적인 진입 검토가 적절하지 않습니다.`;
+    if (analysis.upperRangeChase && path !== "RECLAIM_ENTRY") return `${analysis.asset} 가격이 최근 범위 상단으로 많이 올라 있어 지금은 보수적인 진입 검토가 적절하지 않습니다.`;
+    if (setup.state === "PROMISING" && trigger.state !== "CONFIRMED") return `${analysis.asset} 구조는 나쁘지 않지만 보수적인 진입 검토를 하기에는 트리거가 아직 덜 갖춰졌습니다.`;
+    return `${analysis.asset} 구조가 아직 보수적인 현물 진입 검토를 하기엔 충분히 선명하지 않습니다.`;
+  }
   if (!hasCash) return `No ${analysis.asset} spot inventory is recorded, and no available cash is on record for a new review.`;
   if (analysis.regime === "BREAKDOWN_RISK") return `${analysis.asset} has daily breakdown risk, so a conservative entry review is not justified right now.`;
   if (analysis.upperRangeChase && path !== "RECLAIM_ENTRY") return `${analysis.asset} is still extended inside the recent range, so a conservative entry review is not justified right now.`;
@@ -276,7 +309,14 @@ function buildAddBuyReasons(analysis: PositionStructureAnalysis, context: Decisi
   return [formatPnL(analysis), `Available cash on record: ${cash(context)} KRW.`, `Regime: ${regimeText(analysis.regime)}.`, rangeText(analysis), invalidationText(risk), path === "STRENGTH_ADD" ? "No chase buying still applies: strength adds are only reviewed after a valid reclaim keeps holding." : "No chase buying still applies: this is a staged add-buy review only when pullback structure holds.", `Setup: ${setup.supports[0] ?? setup.blockers[0] ?? "structure reviewed"}.`, `Trigger: ${trigger.confirmed[0] ?? trigger.missing[0] ?? "trigger reviewed"}.`];
 }
 
-function addNoActionSummary(analysis: PositionStructureAnalysis, hasCash: boolean, setup: SetupEval, trigger: TriggerEval, path: BullishPath): string {
+function addNoActionSummary(locale: "ko" | "en", analysis: PositionStructureAnalysis, hasCash: boolean, setup: SetupEval, trigger: TriggerEval, path: BullishPath): string {
+  if (locale === "ko") {
+    if (!hasCash) return `${analysis.asset} 구조가 혼재돼 있고 지금은 분할 추가매수 검토에 쓸 현금 여력 기록도 없습니다.`;
+    if (analysis.upperRangeChase && path !== "STRENGTH_ADD") return `${analysis.asset} 가격이 최근 범위 상단에 너무 높아 지금은 보수적인 추가매수 검토가 적절하지 않습니다.`;
+    if (analysis.regime === "BREAKDOWN_RISK" || (analysis.regime === "WEAK_DOWNTREND" && path !== "STRENGTH_ADD")) return `${analysis.asset} 구조 약화가 커서 분할 추가매수 검토가 보수적이지 않습니다.`;
+    if (setup.state === "PROMISING" && trigger.state !== "CONFIRMED") return `${analysis.asset} 눌림 구조가 완전히 무너지진 않았지만 분할 추가매수 검토를 하기엔 트리거가 아직 덜 갖춰졌습니다.`;
+    return `${analysis.asset} 구조가 혼재돼 있어, 보수적으로는 관찰을 유지하고 무효화 기준을 분명히 두는 편이 낫습니다.`;
+  }
   if (!hasCash) return `${analysis.asset} structure is mixed, and there is no recorded cash buffer for a staged add-buy review right now.`;
   if (analysis.upperRangeChase && path !== "STRENGTH_ADD") return `${analysis.asset} is sitting too high in the recent range for a conservative add-buy review right now.`;
   if (analysis.regime === "BREAKDOWN_RISK" || (analysis.regime === "WEAK_DOWNTREND" && path !== "STRENGTH_ADD")) return `${analysis.asset} is weakening too aggressively for a staged add-buy review.`;

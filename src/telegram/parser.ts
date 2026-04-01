@@ -244,6 +244,9 @@ function buildTelegramProfile(
   if (displayName) {
     profile.displayName = displayName;
   }
+  if (user.language_code) {
+    profile.languageCode = user.language_code;
+  }
 
   return profile;
 }

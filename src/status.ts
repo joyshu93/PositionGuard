@@ -1,8 +1,10 @@
 import type {
   PositionState,
+  SupportedLocale,
   SupportedAsset,
   UserStateBundle,
 } from "./domain/types.js";
+import { formatNumberForLocale, getMessages, resolveUserLocale } from "./i18n/index.js";
 import { assessReadiness } from "./readiness.js";
 
 export interface RecentNotificationSummary {
@@ -38,73 +40,73 @@ export function assessSetupCompleteness(
 export function renderStatusMessage(
   userState: UserStateBundle | null,
   recentNotifications: RecentNotificationSummary[] = [],
+  localeInput?: SupportedLocale | null,
 ): string {
+  const locale = resolveUserLocale(localeInput ?? userState?.user.locale ?? null);
+  const messages = getMessages(locale);
+
   if (!userState) {
-    return [
-      "No stored setup yet.",
-      "Tracked assets default to BTC and ETH until you choose otherwise.",
-      "Record available cash with /setcash <amount>.",
-      "Record BTC or ETH spot state with /setposition <BTC|ETH> <quantity> <average-entry-price>.",
-      "This bot records manual state only. It does not execute trades.",
-    ].join("\n");
+    return messages.status.empty.join("\n");
   }
 
   const completeness = assessSetupCompleteness(userState);
 
   return [
-    `Sleep mode: ${userState.user.sleepModeEnabled ? "on" : "off"}`,
-    `Tracked assets: ${formatTrackedAssets(completeness.trackedAssets)}`,
-    `Setup readiness: ${completeness.isComplete ? "ready" : "incomplete"}`,
-    `Available cash: ${
+    messages.status.sleepMode(userState.user.sleepModeEnabled),
+    messages.status.trackedAssets(formatTrackedAssets(completeness.trackedAssets)),
+    messages.status.setupReadiness(completeness.isComplete),
+    messages.status.availableCash(
       userState.accountState
-        ? `${formatNumber(userState.accountState.availableCash)} KRW`
-        : "missing"
-    }`,
-    `BTC spot record: ${formatPosition(userState.positions.BTC)}`,
-    `ETH spot record: ${formatPosition(userState.positions.ETH)}`,
-    `Missing next steps: ${formatMissingItems(completeness)}`,
-    ...formatRecentNotifications(recentNotifications),
-    "State is record-only. No trade execution is performed.",
+        ? `${formatNumber(userState.accountState.availableCash, locale)} KRW`
+        : messages.booleans.missing,
+    ),
+    messages.status.spotRecord("BTC", formatPosition(userState.positions.BTC, locale, messages.booleans.missing)),
+    messages.status.spotRecord("ETH", formatPosition(userState.positions.ETH, locale, messages.booleans.missing)),
+    messages.status.missingNextSteps(formatMissingItems(completeness, messages.booleans.none)),
+    ...formatRecentNotifications(recentNotifications, locale),
+    messages.status.recordOnly,
   ].join("\n");
 }
 
-function formatPosition(position: PositionState | undefined): string {
+function formatPosition(position: PositionState | undefined, locale: SupportedLocale, missingLabel: string): string {
   if (!position) {
-    return "missing";
+    return missingLabel;
   }
 
-  return `${formatNumber(position.quantity)} @ avg ${formatNumber(
+  return `${formatNumber(position.quantity, locale)} @ avg ${formatNumber(
     position.averageEntryPrice,
+    locale,
+    8,
   )} KRW`;
 }
 
-function formatMissingItems(completeness: SetupCompleteness): string {
+function formatMissingItems(completeness: SetupCompleteness, noneLabel: string): string {
   return completeness.missingItems.length > 0
     ? completeness.missingItems.join(", ")
-    : "none";
+    : noneLabel;
 }
 
-function formatNumber(value: number): string {
-  return new Intl.NumberFormat("en-US", {
-    maximumFractionDigits: 8,
-  }).format(value);
+function formatNumber(value: number, locale: SupportedLocale, maximumFractionDigits = 8): string {
+  return formatNumberForLocale(locale, value, maximumFractionDigits);
 }
 
 function formatRecentNotifications(
   recentNotifications: RecentNotificationSummary[],
+  locale: SupportedLocale,
 ): string[] {
+  const messages = getMessages(locale);
   if (recentNotifications.length === 0) {
-    return ["Recent alerts: none"];
+    return [messages.status.recentAlertsNone];
   }
 
   return [
-    "Recent alerts:",
+    messages.status.recentAlertsTitle,
     ...recentNotifications.map((notification) => {
-      const reason = notification.reasonKey ?? "unclassified";
+      const reason = notification.reasonKey ?? messages.booleans.notAvailable;
       const extra = notification.suppressedBy
         ? ` (${notification.suppressedBy})`
         : "";
-      return `- ${notification.deliveryStatus} ${reason}${extra}`;
+      return messages.status.recentAlertLine(`${notification.deliveryStatus} ${reason}${extra}`);
     }),
   ];
 }
