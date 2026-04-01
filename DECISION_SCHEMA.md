@@ -93,6 +93,21 @@ Required fields:
 - `symbol`
 - `generatedAt`
 
+Optional structured coaching fields:
+- `executionGuide`
+  - `planType`: `ENTRY` | `ADD_BUY` | `REDUCE` | `EXIT_PLAN`
+  - `setupType`: `PULLBACK_ENTRY` | `RECLAIM_ENTRY` | `PULLBACK_ADD` | `STRENGTH_ADD` | `PARTIAL_REDUCE` | `EXIT_PLAN_REVIEW`
+  - `entryZoneLow`
+  - `entryZoneHigh`
+  - `initialSizePctOfCash`
+  - `maxTotalSizePctOfCash`
+  - `reducePctOfPosition`
+  - `invalidationLevel`
+  - `invalidationRuleText`
+  - `chaseGuardText`
+  - `actionText`
+  - `cautionText`
+
 Allowed MVP statuses:
 - `SETUP_INCOMPLETE`
 - `INSUFFICIENT_DATA`
@@ -143,6 +158,7 @@ Decision summaries and reasons should read like conservative coaching, not execu
 
 - `summary` should give a short, explicit coaching takeaway.
 - `reasons` should explain regime, setup, trigger, invalidation, or risk in plain language.
+- `executionGuide` may provide explicit record-only coaching detail about where to act, how much to stage, what invalidates the idea, and whether chasing is forbidden.
 - `ACTION_NEEDED` should stay narrow and only cover manual correction, contradictory state, repeated operational failure, or clear invalidation/risk escalation.
 - The rule-based engine may use `ACTION_NEEDED` directly for risk review when structure weakens materially, while the temporary alert policy remains available for setup and operational failures.
 - The rule-based engine may also use `ACTION_NEEDED` for conservative `entry review` or `add-buy review` coaching when structure is constructive and the setup is not chasing price.

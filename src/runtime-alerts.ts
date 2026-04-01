@@ -5,7 +5,7 @@ import type {
   SupportedAsset,
   SupportedMarket,
 } from "./domain/types.js";
-import { getMessages, localizeNoExecution, resolveUserLocale } from "./i18n/index.js";
+import { getMessages, resolveUserLocale } from "./i18n/index.js";
 
 export const ALERT_NOTIFICATION_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 export const SETUP_ALERT_NOTIFICATION_COOLDOWN_MS = 12 * 60 * 60 * 1000;
@@ -102,7 +102,7 @@ export function buildActionNeededMessage(input: AlertMessageInput): string {
     `${input.market}`,
     input.summary,
     ...topReasons.map((reason) => `- ${reason}`),
-    `${localizeNoExecution(locale)} ${messages.alerts.manualRecordOnly}`,
+    messages.alerts.manualRecordOnly,
   ];
   return lines.join("\n");
 }
@@ -490,7 +490,6 @@ function buildStateUpdateReminderMessage(input: {
     messages.alerts.stateReminderPosition,
     messages.alerts.stateReminderCash,
     messages.alerts.stateReminderStoredState,
-    localizeNoExecution(locale),
     messages.alerts.stateReminderRecordOnly,
   ].join("\n");
 }

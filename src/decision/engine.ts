@@ -4,6 +4,7 @@ import type {
   DecisionResult,
   DecisionRiskLevel,
   DecisionSetupState,
+  ExecutionGuide,
   MarketRegime,
 } from "../domain/types.js";
 import {
@@ -14,7 +15,7 @@ import {
   type MarketStructureAnalysis,
   type PositionStructureAnalysis,
 } from "./market-structure.js";
-import { localizeNoExecution, resolveUserLocale } from "../i18n/index.js";
+import { resolveUserLocale } from "../i18n/index.js";
 
 type SetupKind = "ENTRY" | "ADD_BUY" | "REDUCE" | "NONE";
 type BullishPath = "PULLBACK_ENTRY" | "RECLAIM_ENTRY" | "PULLBACK_ADD" | "STRENGTH_ADD" | null;
@@ -36,6 +37,7 @@ interface SetupEval { kind: SetupKind; state: DecisionSetupState; supports: stri
 interface TriggerEval { state: DecisionDiagnostics["trigger"]["state"]; confirmed: string[]; missing: string[]; }
 interface RiskEval { level: DecisionRiskLevel; invalidationState: DecisionDiagnostics["risk"]["invalidationState"]; invalidationLevel: number | null; notes: string[]; }
 interface SetupBlocker { code: SetupBlockerCode; severity: SetupBlockerSeverity; message: string; }
+interface CashSizingGuide { initialPct: number | null; maxPct: number | null; caution: string | null; }
 
 export function runDecisionEngine(context: DecisionContext): DecisionResult {
   if (!context.setup.isReady) return baseResult(context, "SETUP_INCOMPLETE", "Manual setup is incomplete; waiting for user-reported inputs.", [`Missing setup items: ${context.setup.missingItems.join(", ")}.`, "PositionGuard only works from user-reported state."], false);
@@ -59,6 +61,7 @@ function evaluateEntry(context: DecisionContext, analysis: MarketStructureAnalys
   const risk = assessRisk(analysis, analysis.riskLevel, getInvalidationMode(path));
   const diagnostics = buildDiagnostics(analysis, setup, trigger, risk);
   if (setup.state === "READY" && trigger.state === "CONFIRMED") {
+    const executionGuide = buildEntryExecutionGuide(context, analysis, risk, path);
     const continuation = path === "RECLAIM_ENTRY";
     const summary = continuation
       ? locale === "ko"
@@ -67,17 +70,16 @@ function evaluateEntry(context: DecisionContext, analysis: MarketStructureAnalys
       : locale === "ko"
         ? `${analysis.asset} 눌림 구조가 보수적인 현물 진입 검토에 적합합니다.`
         : `${analysis.asset} pullback structure supports a conservative spot entry review.`;
-    return withAlert(context, diagnostics, "ENTRY_REVIEW_REQUIRED", `entry-review:${context.user.id}:${analysis.asset}:${bucketEntry(analysis, path)}`, summary, buildEntryReasons(analysis, context, setup, trigger, risk, path), [
-      locale === "ko" ? `조치 필요: ${summary}` : `Action needed: ${summary}`,
-      continuation
-        ? locale === "ko"
-          ? "분할 전제는 유지하고, 먼저 무효화 기준을 확인한 뒤 리클레임이 유지될 때만 유효하다고 보세요."
-          : "Keep it staged, confirm the invalidation level first, and only treat it as valid while the reclaim keeps holding."
-        : locale === "ko"
-          ? "분할 전제는 유지하고, 먼저 무효화 기준을 확인한 뒤 상단 추격은 피하세요."
-          : "Keep it staged, confirm the invalidation level first, and avoid chasing the upper end of the range.",
-      localizeNoExecution(locale),
-    ].join("\n"));
+    return withAlert(
+      context,
+      diagnostics,
+      "ENTRY_REVIEW_REQUIRED",
+      `entry-review:${context.user.id}:${analysis.asset}:${bucketEntry(analysis, path)}`,
+      summary,
+      [...buildEntryReasons(analysis, context, setup, trigger, risk, path), ...buildExecutionGuideReasons(executionGuide, locale)],
+      buildExecutionGuideAlertMessage(locale, summary, executionGuide),
+      executionGuide,
+    );
   }
   return {
     ...baseResult(context, "NO_ACTION", entryNoActionSummary(locale, analysis, hasCash, setup, trigger, path), entryNoActionReasons(analysis, hasCash, setup, trigger, risk, path), false),
@@ -94,6 +96,7 @@ function evaluateAddBuy(context: DecisionContext, analysis: PositionStructureAna
   const risk = assessRisk(analysis, analysis.riskLevel === "LOW" && analysis.pnlPct > -0.03 ? "MODERATE" : analysis.riskLevel, getInvalidationMode(path));
   const diagnostics = buildDiagnostics(analysis, setup, trigger, risk);
   if (setup.state === "READY" && trigger.state === "CONFIRMED") {
+    const executionGuide = buildAddBuyExecutionGuide(context, analysis, risk, path);
     const strengthAdd = path === "STRENGTH_ADD";
     const summary = strengthAdd
       ? locale === "ko"
@@ -102,17 +105,16 @@ function evaluateAddBuy(context: DecisionContext, analysis: PositionStructureAna
       : locale === "ko"
         ? `${analysis.asset} 눌림 구조가 분할 추가매수 검토를 정당화할 수 있습니다.`
         : `${analysis.asset} pullback may justify a staged add-buy review.`;
-    return withAlert(context, diagnostics, "ADD_BUY_REVIEW_REQUIRED", `add-buy-review:${context.user.id}:${analysis.asset}:${bucketAdd(analysis, path)}`, summary, buildAddBuyReasons(analysis, context, setup, trigger, risk, path), [
-      locale === "ko" ? `조치 필요: ${summary}` : `Action needed: ${summary}`,
-      strengthAdd
-        ? locale === "ko"
-          ? "리클레임이 계속 유지되고 무효화 기준이 분명하며 추가가 분할 전제일 때만 검토하세요."
-          : "Only consider it if the reclaim still holds, the invalidation level is clear, and the add remains staged."
-        : locale === "ko"
-          ? "무효화 기준이 분명하고 현금이 남아 있으며 붕괴 구간으로 평균단가를 낮추는 상황이 아닐 때만 검토하세요."
-          : "Only consider it if the invalidation level is clear, cash remains available, and you are not averaging into breakdown.",
-      localizeNoExecution(locale),
-    ].join("\n"));
+    return withAlert(
+      context,
+      diagnostics,
+      "ADD_BUY_REVIEW_REQUIRED",
+      `add-buy-review:${context.user.id}:${analysis.asset}:${bucketAdd(analysis, path)}`,
+      summary,
+      [...buildAddBuyReasons(analysis, context, setup, trigger, risk, path), ...buildExecutionGuideReasons(executionGuide, locale)],
+      buildExecutionGuideAlertMessage(locale, summary, executionGuide),
+      executionGuide,
+    );
   }
   return {
     ...baseResult(context, "NO_ACTION", addNoActionSummary(locale, analysis, hasCash, setup, trigger, path), addNoActionReasons(analysis, hasCash, setup, trigger, risk, path), false),
@@ -135,6 +137,7 @@ function evaluateReduce(context: DecisionContext, analysis: PositionStructureAna
       diagnostics,
     };
   }
+  const executionGuide = buildReduceExecutionGuide(context, analysis, risk);
   const summary = analysis.breakdown1d || risk.level === "HIGH"
     ? locale === "ko"
       ? `${analysis.asset} 구조가 상위 시간대 지지를 잃었습니다. 매도 측 리스크 관리를 검토하세요.`
@@ -142,13 +145,25 @@ function evaluateReduce(context: DecisionContext, analysis: PositionStructureAna
     : locale === "ko"
       ? `${analysis.asset} 구조가 약해지고 있습니다. 부분 축소 또는 이탈 계획을 검토하세요.`
       : `${analysis.asset} structure is weakening; review partial reduction or exit plan.`;
-  return withAlert(context, diagnostics, "REDUCE_REVIEW_REQUIRED", `reduce-review:${context.user.id}:${analysis.asset}:${bucketReduce(analysis)}`, summary, [formatPnL(analysis), `Regime: ${regimeText(analysis.regime)}.`, rangeText(analysis), invalidationText(risk), `What broke: ${setup.supports[0] ?? "higher timeframe support is weakening"}.`, `Trigger: ${trigger.confirmed[0] ?? trigger.missing[0] ?? "bearish confirmation is building"}.`, "Survival first: review reduce-side risk, sell review, or exit plan review before hoping for recovery."], [
-    locale === "ko" ? `조치 필요: ${summary}` : `Action needed: ${summary}`,
-    locale === "ko"
-      ? "무효화 기준, 현금 리스크 노출, 그리고 지금 축소 검토나 이탈 계획 검토가 필요한지 다시 확인하세요."
-      : "Review the invalidation level, cash-risk posture, and whether a reduce review or exit plan review is now required.",
-    localizeNoExecution(locale),
-  ].join("\n"));
+  return withAlert(
+    context,
+    diagnostics,
+    "REDUCE_REVIEW_REQUIRED",
+    `reduce-review:${context.user.id}:${analysis.asset}:${bucketReduce(analysis)}`,
+    summary,
+    [
+      formatPnL(analysis),
+      `Regime: ${regimeText(analysis.regime)}.`,
+      rangeText(analysis),
+      invalidationText(risk),
+      `What broke: ${setup.supports[0] ?? "higher timeframe support is weakening"}.`,
+      `Trigger: ${trigger.confirmed[0] ?? trigger.missing[0] ?? "bearish confirmation is building"}.`,
+      "Survival first: review reduce-side risk, sell review, or exit plan review before hoping for recovery.",
+      ...buildExecutionGuideReasons(executionGuide, locale),
+    ],
+    buildExecutionGuideAlertMessage(locale, summary, executionGuide),
+    executionGuide,
+  );
 }
 
 function assessEntrySetup(analysis: MarketStructureAnalysis, hasCash: boolean, path: BullishPath): SetupEval {
@@ -331,6 +346,433 @@ function addNoActionReasons(analysis: PositionStructureAnalysis, hasCash: boolea
   return [...reasons, `Setup: ${setup.blockers[0] ?? setup.supports[0] ?? "structure reviewed"}.`, `Trigger: ${trigger.missing[0] ?? trigger.confirmed[0] ?? "trigger reviewed"}.`];
 }
 
+function buildEntryExecutionGuide(
+  context: DecisionContext,
+  analysis: MarketStructureAnalysis,
+  risk: RiskEval,
+  path: BullishPath,
+): ExecutionGuide {
+  const pullback = path !== "RECLAIM_ENTRY";
+  const zone = pullback
+    ? buildPullbackZone(analysis)
+    : buildReclaimZone(analysis);
+  const sizing = buildCashSizingGuide(context, analysis.asset, false);
+
+  return {
+    planType: "ENTRY",
+    setupType: pullback ? "PULLBACK_ENTRY" : "RECLAIM_ENTRY",
+    entryZoneLow: zone.low,
+    entryZoneHigh: zone.high,
+    initialSizePctOfCash: sizing.initialPct,
+    maxTotalSizePctOfCash: sizing.maxPct,
+    reducePctOfPosition: null,
+    invalidationLevel: risk.invalidationLevel,
+    invalidationRuleText: pullback
+      ? buildPullbackInvalidationText(risk.invalidationLevel)
+      : buildReclaimInvalidationText(risk.invalidationLevel),
+    chaseGuardText: pullback
+      ? buildPullbackChaseGuardText(analysis, zone)
+      : buildReclaimChaseGuardText(analysis, zone),
+    actionText: pullback
+      ? buildPullbackEntryActionText(zone, sizing)
+      : buildReclaimEntryActionText(zone, sizing),
+    cautionText: sizing.caution,
+  };
+}
+
+function buildAddBuyExecutionGuide(
+  context: DecisionContext,
+  analysis: PositionStructureAnalysis,
+  risk: RiskEval,
+  path: BullishPath,
+): ExecutionGuide {
+  const strengthAdd = path === "STRENGTH_ADD";
+  const zone = strengthAdd
+    ? buildReclaimZone(analysis)
+    : buildPullbackZone(analysis);
+  const sizing = buildCashSizingGuide(context, analysis.asset, true);
+
+  return {
+    planType: "ADD_BUY",
+    setupType: strengthAdd ? "STRENGTH_ADD" : "PULLBACK_ADD",
+    entryZoneLow: zone.low,
+    entryZoneHigh: zone.high,
+    initialSizePctOfCash: sizing.initialPct,
+    maxTotalSizePctOfCash: sizing.maxPct,
+    reducePctOfPosition: null,
+    invalidationLevel: risk.invalidationLevel,
+    invalidationRuleText: strengthAdd
+      ? buildReclaimInvalidationText(risk.invalidationLevel)
+      : buildAddInvalidationText(risk.invalidationLevel),
+    chaseGuardText: strengthAdd
+      ? buildStrengthAddChaseGuardText(analysis, zone)
+      : buildPullbackAddChaseGuardText(analysis, zone),
+    actionText: strengthAdd
+      ? buildStrengthAddActionText(zone, sizing)
+      : buildPullbackAddActionText(zone, sizing),
+    cautionText: buildAddCautionText(analysis, sizing),
+  };
+}
+
+function buildReduceExecutionGuide(
+  context: DecisionContext,
+  analysis: PositionStructureAnalysis,
+  risk: RiskEval,
+): ExecutionGuide {
+  const strongExit = analysis.breakdown1d || risk.level === "HIGH";
+  const reductionPct = strongExit ? 65 : 35;
+  const zone = buildReduceZone(analysis);
+
+  return {
+    planType: strongExit ? "EXIT_PLAN" : "REDUCE",
+    setupType: strongExit ? "EXIT_PLAN_REVIEW" : "PARTIAL_REDUCE",
+    entryZoneLow: zone.low,
+    entryZoneHigh: zone.high,
+    initialSizePctOfCash: null,
+    maxTotalSizePctOfCash: null,
+    reducePctOfPosition: reductionPct,
+    invalidationLevel: risk.invalidationLevel,
+    invalidationRuleText: buildReduceInvalidationText(risk.invalidationLevel, strongExit),
+    chaseGuardText: strongExit
+      ? "Do not wait for a full recovery story after higher-timeframe support has already failed."
+      : "Do not let a weakening structure turn into passive hope while the position stays fully sized.",
+    actionText: strongExit
+      ? buildExitPlanActionText(zone, reductionPct)
+      : buildReduceActionText(zone, reductionPct),
+    cautionText: context.user.sleepModeEnabled
+      ? "Sleep mode is on in the stored profile, so review whether delayed reaction is adding avoidable downside risk."
+      : null,
+  };
+}
+
+function buildExecutionGuideReasons(
+  guide: ExecutionGuide,
+  locale: "ko" | "en",
+): string[] {
+  const reasons: string[] = [];
+  if (guide.entryZoneLow !== null || guide.entryZoneHigh !== null) {
+    reasons.push(
+      locale === "ko"
+        ? `행동 구간: ${formatGuideZone(guide)}.`
+        : `Action zone: ${formatGuideZone(guide)}.`,
+    );
+  }
+  if (guide.initialSizePctOfCash !== null) {
+    reasons.push(
+      locale === "ko"
+        ? `초기 분할은 기록 현금의 약 ${guide.initialSizePctOfCash}% 기준입니다.`
+        : `Initial staged size is about ${guide.initialSizePctOfCash}% of recorded cash.`,
+    );
+  }
+  if (guide.maxTotalSizePctOfCash !== null) {
+    reasons.push(
+      locale === "ko"
+        ? `최대 누적은 기록 현금의 약 ${guide.maxTotalSizePctOfCash}% 기준입니다.`
+        : `Maximum staged allocation is about ${guide.maxTotalSizePctOfCash}% of recorded cash.`,
+    );
+  }
+  if (guide.reducePctOfPosition !== null) {
+    reasons.push(
+      locale === "ko"
+        ? `기록 포지션의 약 ${guide.reducePctOfPosition}% 축소 검토 구간입니다.`
+        : `Review reducing about ${guide.reducePctOfPosition}% of the recorded position.`,
+    );
+  }
+  reasons.push(localizeGuideInvalidationText(guide, locale));
+  reasons.push(localizeGuideChaseGuardText(guide, locale));
+  const cautionText = localizeGuideCautionText(guide, locale);
+  if (cautionText) reasons.push(cautionText);
+  return reasons;
+}
+
+function buildExecutionGuideAlertMessage(
+  locale: "ko" | "en",
+  summary: string,
+  guide: ExecutionGuide,
+): string {
+  const lines = [
+    locale === "ko" ? `조치 필요: ${summary}` : `Action needed: ${summary}`,
+    (locale === "ko" ? "왜 지금:" : "Why now:") + ` ${localizeGuideActionText(guide, locale)}`,
+  ];
+
+  if (guide.entryZoneLow !== null || guide.entryZoneHigh !== null) {
+    lines.push(`${locale === "ko" ? "행동 구간:" : "Action zone:"} ${formatGuideZone(guide)}`);
+  }
+  if (guide.initialSizePctOfCash !== null) {
+    lines.push(
+      locale === "ko"
+        ? `첫 분할: 기록 현금의 약 ${guide.initialSizePctOfCash}%`
+        : `First staged size: ${guide.initialSizePctOfCash}% of recorded cash`,
+    );
+  }
+  if (guide.maxTotalSizePctOfCash !== null) {
+    lines.push(
+      locale === "ko"
+        ? `최대 누적: 기록 현금의 약 ${guide.maxTotalSizePctOfCash}%`
+        : `Max staged allocation: ${guide.maxTotalSizePctOfCash}% of recorded cash`,
+    );
+  }
+  if (guide.reducePctOfPosition !== null) {
+    lines.push(
+      locale === "ko"
+        ? `축소 검토: 기록 포지션의 약 ${guide.reducePctOfPosition}%`
+        : `Reduce review: ${guide.reducePctOfPosition}% of recorded position`,
+    );
+  }
+  lines.push(`${locale === "ko" ? "무효화:" : "Invalidation:"} ${localizeGuideInvalidationText(guide, locale)}`);
+  lines.push(`${locale === "ko" ? "추격 규칙:" : "Chase guard:"} ${localizeGuideChaseGuardText(guide, locale)}`);
+  const cautionText = localizeGuideCautionText(guide, locale);
+  if (cautionText) {
+    lines.push(`${locale === "ko" ? "주의:" : "Caution:"} ${cautionText}`);
+  }
+  return lines.join("\n");
+}
+
+function buildCashSizingGuide(
+  context: DecisionContext,
+  asset: "BTC" | "ETH",
+  isAdd: boolean,
+): CashSizingGuide {
+  const cash = Math.max(0, context.accountState?.availableCash ?? 0);
+  if (cash <= 0) return { initialPct: null, maxPct: null, caution: "No recorded cash remains for a staged review." };
+  const baseInitial = isAdd ? 20 : 25;
+  const baseMax = isAdd ? 40 : 50;
+  const cappedInitial = context.user.sleepModeEnabled ? Math.min(baseInitial, 15) : baseInitial;
+  const cappedMax = context.user.sleepModeEnabled ? Math.min(baseMax, 35) : baseMax;
+  return {
+    initialPct: cappedInitial,
+    maxPct: cappedMax,
+    caution: isAdd && cash < 300000
+      ? `Recorded ${asset} add-buy cash buffer is small, so keep any review unusually small.`
+      : null,
+  };
+}
+
+function buildPullbackZone(analysis: MarketStructureAnalysis | PositionStructureAnalysis): { low: number | null; high: number | null } {
+  const anchorLow = maxDefined(
+    analysis.timeframes["4h"].support,
+    analysis.timeframes["4h"].indicators.ema20,
+    analysis.timeframes["1d"].support,
+  );
+  const anchorHigh = minDefined(
+    analysis.timeframes["1h"].indicators.ema20,
+    analysis.timeframes["4h"].indicators.ema20,
+    analysis.currentPrice,
+  );
+  return normalizeZone(anchorLow, anchorHigh, analysis.timeframes["4h"].indicators.atr14, 0.2, 0.15);
+}
+
+function buildReclaimZone(analysis: MarketStructureAnalysis | PositionStructureAnalysis): { low: number | null; high: number | null } {
+  const anchorLow = maxDefined(
+    analysis.reclaimLevel,
+    analysis.timeframes["4h"].support,
+    analysis.timeframes["4h"].indicators.ema20,
+  );
+  const anchorHigh = minDefined(
+    analysis.timeframes["1h"].resistance,
+    analysis.timeframes["4h"].resistance,
+    analysis.currentPrice,
+  );
+  return normalizeZone(anchorLow, anchorHigh, analysis.timeframes["1h"].indicators.atr14, 0.15, 0.1);
+}
+
+function buildReduceZone(analysis: PositionStructureAnalysis): { low: number | null; high: number | null } {
+  const anchorLow = maxDefined(
+    analysis.currentPrice,
+    analysis.timeframes["1h"].support,
+  );
+  const anchorHigh = minDefined(
+    analysis.timeframes["1h"].resistance,
+    analysis.timeframes["4h"].resistance,
+    analysis.averageEntryPrice > 0 ? analysis.averageEntryPrice : null,
+  );
+  return normalizeZone(anchorLow, anchorHigh, analysis.timeframes["1h"].indicators.atr14, 0, 0.15);
+}
+
+function normalizeZone(
+  lowAnchor: number | null,
+  highAnchor: number | null,
+  atr: number | null,
+  lowAtrMultiplier: number,
+  highAtrMultiplier: number,
+): { low: number | null; high: number | null } {
+  if (lowAnchor === null && highAnchor === null) return { low: null, high: null };
+  const atrPadding = atr !== null && atr > 0 ? atr : 0;
+  const low = lowAnchor !== null ? Math.max(0, lowAnchor - atrPadding * lowAtrMultiplier) : highAnchor;
+  const high = highAnchor !== null ? Math.max(low ?? 0, highAnchor + atrPadding * highAtrMultiplier) : lowAnchor;
+  return { low: low ?? null, high: high ?? null };
+}
+
+function buildPullbackInvalidationText(level: number | null): string {
+  return level === null
+    ? "Pullback invalidation is not precise enough yet, so keep the idea staged only."
+    : `The pullback idea is invalid if price loses roughly ${price(level)} KRW on a closing basis.`;
+}
+
+function buildReclaimInvalidationText(level: number | null): string {
+  return level === null
+    ? "Reclaim invalidation is not precise enough yet, so wait for a clearer hold."
+    : `The reclaim idea is invalid if price falls back below roughly ${price(level)} KRW and cannot hold it.`;
+}
+
+function buildAddInvalidationText(level: number | null): string {
+  return level === null
+    ? "Add-buy invalidation is still too unclear for aggressive averaging."
+    : `Any add-buy review is invalid if price loses roughly ${price(level)} KRW on the retest.`;
+}
+
+function buildReduceInvalidationText(level: number | null, strongExit: boolean): string {
+  if (level === null) {
+    return strongExit
+      ? "Re-stabilization is still unclear, so treat this as damage control rather than a prediction."
+      : "Re-stabilization is still unclear, so keep the reduction review conservative.";
+  }
+  return strongExit
+    ? `Only pause the stronger exit-plan review if price reclaims and holds roughly ${price(level)} KRW again.`
+    : `Pause the partial-reduce review only if price re-stabilizes back above roughly ${price(level)} KRW.`;
+}
+
+function buildPullbackChaseGuardText(analysis: MarketStructureAnalysis, zone: { low: number | null; high: number | null }): string {
+  if (zone.high !== null && analysis.currentPrice > zone.high) {
+    return `Current price is already above the preferred pullback zone near ${formatGuideZone(zone)}; do not chase above the retest area.`;
+  }
+  return "Only review a pullback entry near support or EMA retest; do not convert it into a late breakout chase.";
+}
+
+function buildReclaimChaseGuardText(analysis: MarketStructureAnalysis, zone: { low: number | null; high: number | null }): string {
+  if (zone.high !== null && analysis.currentPrice > zone.high * 1.01) {
+    return `Current price is stretched above the reclaim area near ${formatGuideZone(zone)}; wait for hold or retest instead of chasing.`;
+  }
+  return "Only treat this as a reclaim entry while the reclaimed area keeps holding; do not chase a vertical extension.";
+}
+
+function buildPullbackAddChaseGuardText(analysis: PositionStructureAnalysis, zone: { low: number | null; high: number | null }): string {
+  if (analysis.pnlPct <= -0.06) {
+    return "Do not average deeper into weakness if the pullback starts behaving like a breakdown.";
+  }
+  return `Keep any add-buy review near the pullback zone ${formatGuideZone(zone)} and avoid adding into upper-range extension.`;
+}
+
+function buildStrengthAddChaseGuardText(analysis: PositionStructureAnalysis, zone: { low: number | null; high: number | null }): string {
+  if (zone.high !== null && analysis.currentPrice > zone.high * 1.01) {
+    return `Strength-add structure is valid only on hold or retest of ${formatGuideZone(zone)}; do not chase a second extension leg.`;
+  }
+  return "Strength-add is only for a valid reclaim hold; do not treat momentum alone as permission to oversize.";
+}
+
+function buildPullbackEntryActionText(zone: { low: number | null; high: number | null }, sizing: CashSizingGuide): string {
+  return `Review a staged pullback entry near ${formatGuideZone(zone)} with about ${sizing.initialPct ?? "small"}% of recorded cash first.`;
+}
+
+function buildReclaimEntryActionText(zone: { low: number | null; high: number | null }, sizing: CashSizingGuide): string {
+  return `Review a reclaim entry only while ${formatGuideZone(zone)} keeps holding, starting with about ${sizing.initialPct ?? "small"}% of recorded cash.`;
+}
+
+function buildPullbackAddActionText(zone: { low: number | null; high: number | null }, sizing: CashSizingGuide): string {
+  return `Review a staged add-buy near ${formatGuideZone(zone)} with about ${sizing.initialPct ?? "small"}% of recorded cash, not as deep averaging.`;
+}
+
+function buildStrengthAddActionText(zone: { low: number | null; high: number | null }, sizing: CashSizingGuide): string {
+  return `Review a strength add only on hold or retest of ${formatGuideZone(zone)}, starting near ${sizing.initialPct ?? "small"}% of recorded cash.`;
+}
+
+function buildReduceActionText(zone: { low: number | null; high: number | null }, reductionPct: number): string {
+  return `Review trimming about ${reductionPct}% of the recorded position into weakness or failed bounces around ${formatGuideZone(zone)}.`;
+}
+
+function buildExitPlanActionText(zone: { low: number | null; high: number | null }, reductionPct: number): string {
+  return `Review a stronger exit-plan response of about ${reductionPct}% if damage continues and price cannot re-stabilize around ${formatGuideZone(zone)}.`;
+}
+
+function buildAddCautionText(analysis: PositionStructureAnalysis, sizing: CashSizingGuide): string | null {
+  if (analysis.pnlPct <= -0.06) {
+    return "Recorded loss is already meaningful, so keep any add-buy review smaller than usual and avoid deep averaging.";
+  }
+  return sizing.caution;
+}
+
+function formatGuideZone(input: Pick<ExecutionGuide, "entryZoneLow" | "entryZoneHigh"> | { low: number | null; high: number | null }): string {
+  const low = "entryZoneLow" in input ? input.entryZoneLow : input.low;
+  const high = "entryZoneHigh" in input ? input.entryZoneHigh : input.high;
+  if (low !== null && high !== null) return `${price(low)}-${price(high)} KRW`;
+  if (low !== null) return `>= ${price(low)} KRW`;
+  if (high !== null) return `<= ${price(high)} KRW`;
+  return "not precise enough yet";
+}
+
+function localizeGuideActionText(guide: ExecutionGuide, locale: "ko" | "en"): string {
+  if (locale === "en") return guide.actionText;
+  const zone = formatGuideZone(guide);
+  if (guide.setupType === "PULLBACK_ENTRY") {
+    return `${zone} 부근 지지/EMA 되돌림에서 기록 현금 기준 ${guide.initialSizePctOfCash ?? "소규모"}% 1차 분할 진입 검토 구간입니다.`;
+  }
+  if (guide.setupType === "RECLAIM_ENTRY") {
+    return `${zone} 리클레임 유지 구간에서 기록 현금 기준 ${guide.initialSizePctOfCash ?? "소규모"}% 1차 분할 진입 검토 구간입니다.`;
+  }
+  if (guide.setupType === "PULLBACK_ADD") {
+    return `${zone} 눌림 구간에서 기록 현금 기준 ${guide.initialSizePctOfCash ?? "소규모"}% 분할 추가매수 검토 구간입니다.`;
+  }
+  if (guide.setupType === "STRENGTH_ADD") {
+    return `${zone} 리클레임 유지 또는 재테스트 구간에서 기록 현금 기준 ${guide.initialSizePctOfCash ?? "소규모"}% 강세 추가매수 검토 구간입니다.`;
+  }
+  if (guide.setupType === "EXIT_PLAN_REVIEW") {
+    return `${zone} 부근에서 구조 훼손이 이어지면 기록 포지션의 약 ${guide.reducePctOfPosition ?? "일부"}% 축소 또는 이탈 계획 재검토 구간입니다.`;
+  }
+  return `${zone} 부근에서 기록 포지션의 약 ${guide.reducePctOfPosition ?? "일부"}% 부분 축소 검토 구간입니다.`;
+}
+
+function localizeGuideInvalidationText(guide: ExecutionGuide, locale: "ko" | "en"): string {
+  if (locale === "en") return guide.invalidationRuleText;
+  if (guide.invalidationLevel === null) {
+    return guide.planType === "EXIT_PLAN"
+      ? "재안정화 기준이 아직 충분히 선명하지 않으므로, 예측보다 리스크 축소 관점으로 보세요."
+      : "무효화 기준이 아직 충분히 선명하지 않으므로, 큰 사이즈보다 분할/대기 관점이 우선입니다.";
+  }
+  if (guide.planType === "ENTRY" || guide.planType === "ADD_BUY") {
+    return `아이디어 무효화 기준은 대략 ${price(guide.invalidationLevel)} KRW 이탈 및 종가 기준 미회복입니다.`;
+  }
+  return `대략 ${price(guide.invalidationLevel)} KRW 재회복 및 유지 전까지는 축소 검토를 쉽게 되돌리지 마세요.`;
+}
+
+function localizeGuideChaseGuardText(guide: ExecutionGuide, locale: "ko" | "en"): string {
+  if (locale === "en") return guide.chaseGuardText;
+  if (guide.planType === "ENTRY") {
+    return guide.setupType === "RECLAIM_ENTRY"
+      ? "리클레임 유지 또는 재테스트가 아닌 수직 확장은 추격 매수로 보세요."
+      : "지지/EMA 되돌림을 벗어난 상단 확장은 추격 매수로 보세요.";
+  }
+  if (guide.planType === "ADD_BUY") {
+    return guide.setupType === "STRENGTH_ADD"
+      ? "강세 추가매수도 리클레임 유지 구간에서만 검토하고, 2차 확장은 추격으로 보세요."
+      : "평단 낮추기 목적의 깊은 물타기로 바꾸지 말고, 눌림 구조 안에서만 분할 검토하세요.";
+  }
+  return guide.planType === "EXIT_PLAN"
+    ? "상위 지지가 깨진 뒤 막연한 반등 기대만으로 전량 버티지 마세요."
+    : "구조 약화가 진행 중일 때 희망회로로 풀사이즈를 계속 유지하지 마세요.";
+}
+
+function localizeGuideCautionText(guide: ExecutionGuide, locale: "ko" | "en"): string | null {
+  if (!guide.cautionText) return null;
+  if (locale === "en") return guide.cautionText;
+  if (guide.planType === "ADD_BUY") {
+    return "손실 구간 추가매수는 작게 유지하고, 붕괴형 물타기로 바뀌지 않게 주의하세요.";
+  }
+  if (guide.planType === "EXIT_PLAN" || guide.planType === "REDUCE") {
+    return "저장된 설정과 반응 속도를 다시 확인해, 지연 대응이 추가 하방 노출로 이어지지 않게 보세요.";
+  }
+  return "구조는 좋아도 기록 현금과 분할 전제를 벗어난 과도한 사이즈 확대는 피하세요.";
+}
+
+function maxDefined(...values: Array<number | null | undefined>): number | null {
+  const filtered = values.filter((value): value is number => value !== null && typeof value !== "undefined" && Number.isFinite(value));
+  return filtered.length > 0 ? Math.max(...filtered) : null;
+}
+
+function minDefined(...values: Array<number | null | undefined>): number | null {
+  const filtered = values.filter((value): value is number => value !== null && typeof value !== "undefined" && Number.isFinite(value));
+  return filtered.length > 0 ? Math.min(...filtered) : null;
+}
+
 function withAlert(
   context: DecisionContext,
   diagnostics: DecisionDiagnostics,
@@ -339,11 +781,13 @@ function withAlert(
   summary: string,
   reasons: string[],
   message: string,
+  executionGuide?: ExecutionGuide | null,
 ): DecisionResult {
   return {
     ...baseResult(context, "ACTION_NEEDED", summary, reasons, true),
     symbol: context.marketSnapshot?.market ?? null,
     alert: { reason, cooldownKey, message },
+    executionGuide: executionGuide ?? null,
     diagnostics,
   };
 }
@@ -469,3 +913,4 @@ function bucketEntry(analysis: MarketStructureAnalysis, path: BullishPath): stri
 function bucketAdd(analysis: PositionStructureAnalysis, path: BullishPath): string { return path === "STRENGTH_ADD" ? "reclaim-strength" : analysis.timeframes["4h"].location === "LOWER" ? "four-hour-pullback" : analysis.pnlPct < 0 ? "near-entry-pullback" : "staged-retest"; }
 function bucketReduce(analysis: PositionStructureAnalysis): string { return analysis.breakdown1d ? "daily-break" : analysis.breakdown4h ? "four-hour-break" : analysis.pnlPct <= -0.08 ? "deep-drawdown" : "trend-weakness"; }
 function getFallbackMarket(context: DecisionContext) { return context.positionState?.asset === "BTC" ? "KRW-BTC" as const : context.positionState?.asset === "ETH" ? "KRW-ETH" as const : null; }
+

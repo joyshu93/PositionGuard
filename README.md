@@ -315,7 +315,7 @@ This remains a manual record system. It does not sync balances or execute orders
 - Onboarding is intentionally lightweight; inline buttons guide setup, but cash and position values are still entered with commands
 - `/lastalert`, `/lastdecision`, and `/hourlyhealth` are user-scoped inspection tools, not a global admin console
 
-Decision outputs are structured as coaching summaries and reasons, and the current engine stays conservative and record-only. It now evaluates public BTC/ETH spot structure through a staged `regime -> setup -> trigger -> risk -> coaching wording` flow. It still prefers `SETUP_INCOMPLETE` / `INSUFFICIENT_DATA` / `NO_ACTION` when information is missing or structure is quiet, and keeps `ACTION_NEEDED` narrow for explicit manual correction, repeated market-data failure, or a clear coaching review need.
+Decision outputs are structured as coaching summaries and reasons, and the current engine stays conservative and record-only. It now evaluates public BTC/ETH spot structure through a staged `regime -> setup -> trigger -> risk -> coaching wording` flow. It still prefers `SETUP_INCOMPLETE` / `INSUFFICIENT_DATA` / `NO_ACTION` when information is missing or structure is quiet, and keeps `ACTION_NEEDED` narrow for explicit manual correction, repeated market-data failure, or a clear coaching review need. When a setup is actionable, the engine may also attach a structured `executionGuide` with record-only coaching detail such as entry/add/reduce zone, staged size guidance, invalidation level, and chase guard.
 
 Current coaching behavior is intentionally narrow and rule-based:
 
@@ -323,6 +323,13 @@ Current coaching behavior is intentionally narrow and rule-based:
 - `add-buy review`: possible only when a recorded spot position exists, cash remains available, higher timeframe structure is still constructive or improving, the current location looks like a controlled pullback or a valid reclaim-strength continuation, and the trigger is supportive enough for a staged add-buy review
 - `reduce review`: possible when confirmed structure damage plus at least one supporting weakness signal line up strongly enough that invalidation-first review is needed
 - `sell review` / `exit plan review`: these phrases may appear inside reduce-side coaching when support has failed materially, but they remain coaching-only and non-execution framed
+- actionable alerts may include:
+  - where the review zone sits
+  - how much of recorded cash to stage first
+  - maximum staged allocation guidance
+  - how much of the recorded position to reduce
+  - what invalidates the idea
+  - whether chasing is forbidden
 
 None of these messages execute anything. They remain coaching-only, scenario-based, and always preserve the record-only boundary.
 

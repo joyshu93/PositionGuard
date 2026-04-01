@@ -468,7 +468,7 @@ assert(
     lastDecisionText.includes("status ACTION_NEEDED") &&
     lastDecisionText.includes("summary Manual setup is incomplete.") &&
     lastDecisionText.includes("regime PULLBACK_IN_UPTREND | trigger CONFIRMED | invalidation CLEAR") &&
-    lastDecisionText.includes("Operational only. No trade was executed."),
+    lastDecisionText.includes("Operational only."),
   "/lastdecision should render a compact operational summary.",
 );
 

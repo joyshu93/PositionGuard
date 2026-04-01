@@ -3,7 +3,7 @@ import type {
   DecisionContext,
   DecisionResult,
 } from "../domain/types.js";
-import { getMessages, localizeNoExecution, resolveUserLocale } from "../i18n/index.js";
+import { getMessages, resolveUserLocale } from "../i18n/index.js";
 
 export interface TemporaryAlertPolicyInput {
   context: DecisionContext;
@@ -39,7 +39,6 @@ export function applyTemporaryAlertPolicy(
         message: [
           messages.temporaryPolicy.completeSetupAlert(input.context.setup.missingItems.join(", ")),
           messages.temporaryPolicy.completeSetupNext,
-          localizeNoExecution(locale),
         ].join("\n"),
       },
     );
@@ -65,7 +64,6 @@ export function applyTemporaryAlertPolicy(
         message: [
           messages.temporaryPolicy.marketDataUnavailableAlert(input.context.positionState.asset),
           messages.temporaryPolicy.marketDataUnavailableNext,
-          localizeNoExecution(locale),
         ].join("\n"),
       },
     );
@@ -116,7 +114,6 @@ function getInvalidRecordedStateAlert(context: DecisionContext): {
         message: [
           messages.temporaryPolicy.invalidSpotRecord(position.asset),
           messages.temporaryPolicy.quantityZeroAverageNonZero,
-          localizeNoExecution(locale),
         ].join("\n"),
       },
     };

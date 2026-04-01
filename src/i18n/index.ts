@@ -64,10 +64,6 @@ export function formatCompactTimestampForLocale(locale: SupportedLocale, value: 
   return `${map.year}-${map.month}-${map.day} ${map.hour}:${map.minute}:${map.second} KST`;
 }
 
-export function localizeNoExecution(locale: SupportedLocale): string {
-  return locale === "ko" ? "\uC8FC\uBB38\uC740 \uC2E4\uD589\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4." : "No trade was executed.";
-}
-
 export function formatAvailability(locale: SupportedLocale, value: boolean): string {
   const messages = getMessages(locale);
   return value ? messages.booleans.yes : messages.booleans.no;

@@ -130,9 +130,22 @@ assert(
   entryReviewDecision.summary.includes("spot entry review") &&
     entryReviewDecision.reasons.some((reason: string) => reason.includes("Regime:")) &&
     entryReviewDecision.reasons.some((reason: string) => reason.includes("Invalidation")) &&
-    entryReviewDecision.reasons.some((reason: string) => reason.includes("No chase buying")) &&
-    entryReviewDecision.alert?.message.includes("No trade was executed."),
+    entryReviewDecision.reasons.some((reason: string) => reason.includes("No chase buying")),
   "Entry-review reasons should explain regime, invalidation, and no-chase framing.",
+);
+assert(
+  entryReviewDecision.executionGuide?.planType === "ENTRY" &&
+    entryReviewDecision.executionGuide?.setupType === "PULLBACK_ENTRY" &&
+    typeof entryReviewDecision.executionGuide?.entryZoneLow === "number" &&
+    typeof entryReviewDecision.executionGuide?.entryZoneHigh === "number" &&
+    typeof entryReviewDecision.executionGuide?.initialSizePctOfCash === "number" &&
+    typeof entryReviewDecision.executionGuide?.maxTotalSizePctOfCash === "number" &&
+    typeof entryReviewDecision.executionGuide?.invalidationLevel === "number" &&
+    entryReviewDecision.alert?.message.includes("Action zone:") &&
+    entryReviewDecision.alert?.message.includes("First staged size:") &&
+    entryReviewDecision.alert?.message.includes("Invalidation:") &&
+    entryReviewDecision.alert?.message.includes("Chase guard:"),
+  "Pullback entry reviews should now include structured zone, sizing, invalidation, and chase guidance.",
 );
 
 const chaseSnapshot = buildMarketSnapshot({
@@ -185,6 +198,11 @@ assertEqual(
   noPositionChaseDecision.alert,
   null,
   "Silent non-action should remain the rule when a setup is not actionable.",
+);
+assertEqual(
+  noPositionChaseDecision.executionGuide ?? null,
+  null,
+  "Non-action cases should stay silent instead of fabricating structured execution guidance.",
 );
 
 const reclaimContinuationSnapshot = buildMarketSnapshot({
@@ -317,6 +335,13 @@ assert(
   "Clean reclaim-path entries should stay distinct from pure late-chase setups.",
 );
 assert(
+  reclaimEntryDecision.executionGuide?.planType === "ENTRY" &&
+    reclaimEntryDecision.executionGuide?.setupType === "RECLAIM_ENTRY" &&
+    reclaimEntryDecision.alert?.message.includes("Action zone:") &&
+    reclaimEntryDecision.alert?.message.includes("Max staged allocation:"),
+  "Reclaim entries should expose a distinct structured entry guide instead of only an abstract review label.",
+);
+assert(
   (reclaimEntryDecision.diagnostics?.risk.invalidationLevel ?? null)
     !== (entryReviewDecision.diagnostics?.risk.invalidationLevel ?? null),
   "Reclaim-path invalidation should be calculated differently from the broader pullback invalidation framework.",
@@ -397,7 +422,7 @@ assertEqual(
 assert(
   reclaimMutedVolumeDecision.diagnostics?.setup.state === "READY"
     && reclaimMutedVolumeDecision.alert?.reason === "ENTRY_REVIEW_REQUIRED"
-    && (reclaimMutedVolumeDecision.alert?.message.includes("No trade was executed.") ?? false),
+    && (reclaimMutedVolumeDecision.alert?.message.includes("Action zone:") ?? false),
   "Soft reclaim cases that remain actionable should still use READY plus the same binary entry-review alert contract.",
 );
 
@@ -682,6 +707,14 @@ assert(
     addBuyDecision.reasons.some((reason: string) => reason.includes("No chase buying")),
   "Add-buy reviews should stay coaching-oriented and non-execution based.",
 );
+assert(
+  addBuyDecision.executionGuide?.planType === "ADD_BUY" &&
+    addBuyDecision.executionGuide?.setupType === "PULLBACK_ADD" &&
+    typeof addBuyDecision.executionGuide?.initialSizePctOfCash === "number" &&
+    addBuyDecision.alert?.message.includes("First staged size:") &&
+    addBuyDecision.alert?.message.includes("Chase guard:"),
+  "Actionable add-buy reviews should include explicit staged add guidance.",
+);
 
 const reclaimStrengthAddDecision = runDecisionEngine(
   buildDecisionContext({
@@ -703,6 +736,10 @@ assertEqual(
 assert(
   reclaimStrengthAddDecision.summary.includes("valid reclaim strength"),
   "Strength-add paths should be distinct from pullback add paths in the coaching summary.",
+);
+assert(
+  reclaimStrengthAddDecision.executionGuide?.setupType === "STRENGTH_ADD",
+  "Strength-add paths should carry a distinct structured setup type.",
 );
 
 const fallingKnifeDecision = runDecisionEngine(
@@ -889,6 +926,14 @@ assert(
     reduceReviewDecision.reasons.some((reason: string) => reason.includes("Survival first")),
   "Reduce-review output should explain the survival-first framing.",
 );
+assert(
+  (reduceReviewDecision.executionGuide?.planType === "REDUCE"
+    || reduceReviewDecision.executionGuide?.planType === "EXIT_PLAN") &&
+    typeof reduceReviewDecision.executionGuide?.reducePctOfPosition === "number" &&
+    reduceReviewDecision.alert?.message.includes("Reduce review:")
+    && reduceReviewDecision.alert?.message.includes("Invalidation:"),
+  "Actionable reduce reviews should include structured reduction sizing and re-stabilization guidance.",
+);
 
 const singleWeakSignalDecision = runDecisionEngine(
   buildDecisionContext({
@@ -959,13 +1004,40 @@ assert(
 );
 
 assert(
-  entryReviewDecision.alert?.message.includes("No trade was executed.") ?? false,
-  "Entry-review alerts must remain non-execution framed.",
+  !(entryReviewDecision.alert?.message.includes("No trade was executed.") ?? false),
+  "Entry-review alerts should no longer append the removed no-execution sentence.",
 );
 
 assert(
-  addBuyDecision.alert?.message.includes("No trade was executed.") ?? false,
-  "Add-buy review alerts must remain non-execution framed.",
+  !(addBuyDecision.alert?.message.includes("No trade was executed.") ?? false),
+  "Add-buy review alerts should no longer append the removed no-execution sentence.",
+);
+
+const koreanEntryDecision = runDecisionEngine(
+  buildDecisionContext({
+    userState: {
+      ...withPositionState({
+        quantity: 0,
+        averageEntryPrice: 0,
+      }),
+      user: {
+        ...baseUserState.user,
+        locale: "ko",
+      },
+    },
+    asset: "BTC",
+    marketSnapshot: bullishPullbackSnapshot,
+    generatedAt: "2026-01-01T01:00:00.000Z",
+  }),
+);
+
+assert(
+  koreanEntryDecision.alert?.message.includes("행동 구간:")
+    && koreanEntryDecision.alert?.message.includes("첫 분할:")
+    && koreanEntryDecision.alert?.message.includes("무효화:")
+    && koreanEntryDecision.alert?.message.includes("추격 규칙:")
+    && !koreanEntryDecision.alert?.message.includes("Action zone:"),
+  "Korean actionable messages should render the new execution-style guidance without mixing English headings.",
 );
 
 assert(

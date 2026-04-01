@@ -225,8 +225,8 @@ const message = buildActionNeededMessage({
 });
 
 assert(
-  message.includes("No trade was executed."),
-  "ACTION_NEEDED message should stay record-only.",
+  !message.includes("No trade was executed.") && message.includes("record-only guidance"),
+  "ACTION_NEEDED message should stay record-only without the removed no-execution sentence.",
 );
 assert(
   buildActionNeededAlertText({
@@ -388,9 +388,9 @@ assertEqual(
 assert(
   reminderPlan.message?.includes("/setposition") &&
     reminderPlan.message?.includes("/setcash") &&
-    reminderPlan.message?.includes("No trade was executed.") &&
+    !reminderPlan.message?.includes("No trade was executed.") &&
     reminderPlan.message?.includes("stored manual state"),
-  "Reminder messages should point to manual state update commands and preserve non-execution framing.",
+  "Reminder messages should point to manual state update commands without the removed no-execution sentence.",
 );
 
 const reminderCooldownPlan = buildStateUpdateReminderPlan({

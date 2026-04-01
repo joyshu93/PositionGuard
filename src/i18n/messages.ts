@@ -210,9 +210,9 @@ const en: LocaleMessages = {
     cashRecorded: (amount) => `Cash recorded: ${amount}.`,
     sleepUpdated: (enabled) => `Sleep mode is now ${enabled ? "on" : "off"}.`,
     trackedAssetsRecorded: (assets, onboarding) =>
-      [`Tracked assets recorded: ${assets}.`, onboarding, "No trade was executed."].join("\n"),
+      [`Tracked assets recorded: ${assets}.`, onboarding].join("\n"),
     trackedAssetsChosen: (assets, nextSteps) =>
-      [`Tracked assets chosen: ${assets}.`, "Next steps:", ...nextSteps, "This is record-only guidance. No trade was executed."].join("\n"),
+      [`Tracked assets chosen: ${assets}.`, "Next steps:", ...nextSteps, "This is record-only guidance."].join("\n"),
     recordCashShortcut: "Record available cash with /setcash <amount>.",
     recordCashExample: "Example: /setcash 1000000",
     recordPositionShortcut: (asset) =>
@@ -285,7 +285,7 @@ const en: LocaleMessages = {
       `Latest structure: regime ${regime} | trigger ${trigger} | invalidation ${invalidation}`,
     latestReminder: (value) => `Latest reminder: ${value}`,
     latestMarketIssue: (value) => `Latest market issue: ${value}`,
-    operationalOnly: "Operational only. No trade was executed.",
+    operationalOnly: "Operational only.",
     setupIncomplete: "setup incomplete",
     insufficientData: "insufficient data",
     noAction: "no action",

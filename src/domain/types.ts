@@ -144,6 +144,35 @@ export interface ActionNeededAlert {
   message: string;
 }
 
+export type ExecutionPlanType =
+  | "ENTRY"
+  | "ADD_BUY"
+  | "REDUCE"
+  | "EXIT_PLAN";
+
+export type ExecutionSetupType =
+  | "PULLBACK_ENTRY"
+  | "RECLAIM_ENTRY"
+  | "PULLBACK_ADD"
+  | "STRENGTH_ADD"
+  | "PARTIAL_REDUCE"
+  | "EXIT_PLAN_REVIEW";
+
+export interface ExecutionGuide {
+  planType: ExecutionPlanType;
+  setupType: ExecutionSetupType;
+  entryZoneLow: number | null;
+  entryZoneHigh: number | null;
+  initialSizePctOfCash: number | null;
+  maxTotalSizePctOfCash: number | null;
+  reducePctOfPosition: number | null;
+  invalidationLevel: number | null;
+  invalidationRuleText: string;
+  chaseGuardText: string;
+  actionText: string;
+  cautionText: string | null;
+}
+
 export interface DecisionDiagnosticsTimeframeSnapshot {
   trend: "UP" | "DOWN" | "FLAT";
   location: "LOWER" | "MIDDLE" | "UPPER";
@@ -196,6 +225,7 @@ export interface DecisionResult {
   symbol: SupportedMarket | null;
   generatedAt: string;
   alert: ActionNeededAlert | null;
+  executionGuide?: ExecutionGuide | null;
   diagnostics?: DecisionDiagnostics | null;
 }
 

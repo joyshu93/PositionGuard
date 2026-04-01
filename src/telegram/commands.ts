@@ -1,5 +1,5 @@
 import type { SupportedLocale } from "../domain/types.js";
-import { formatAvailability, formatCompactTimestampForLocale, formatLocaleName, formatNumberForLocale, getMessages, localizeNoExecution, resolveUserLocale } from "../i18n/index.js";
+import { formatAvailability, formatCompactTimestampForLocale, formatLocaleName, formatNumberForLocale, getMessages, resolveUserLocale } from "../i18n/index.js";
 import { formatValidationErrors, validatePositionInput } from "../validation.js";
 import { describeDecisionVerdict } from "../operator-visibility.js";
 import { parseCashAmount, parsePositionArgs, parseSleepModeArg, parseTelegramCallbackAction } from "./parser.js";
@@ -270,10 +270,7 @@ async function handleSetPosition(
   return [
     send(
       context.chatId,
-      [
-        `${validation.value.asset} ${locale === "ko" ? "\uD604\uBB3C \uAE30\uB85D \uC644\uB8CC" : "spot position recorded"}: ${formatNumberForLocale(locale, validation.value.quantity)} @ avg ${formatNumberForLocale(locale, validation.value.averageEntryPrice)} KRW.`,
-        localizeNoExecution(locale),
-      ].join("\n"),
+      `${validation.value.asset} ${locale === "ko" ? "\uD604\uBB3C \uAE30\uB85D \uC644\uB8CC" : "spot position recorded"}: ${formatNumberForLocale(locale, validation.value.quantity)} @ avg ${formatNumberForLocale(locale, validation.value.averageEntryPrice)} KRW.`,
       buildOnboardingKeyboard(locale),
     ),
   ];
@@ -424,7 +421,7 @@ function buildCashShortcutActions(
   return [
     send(
       context.chatId,
-      [messages.command.recordCashShortcut, messages.command.recordCashExample, messages.alerts.manualRecordOnly, localizeNoExecution(locale)].join("\n"),
+      [messages.command.recordCashShortcut, messages.command.recordCashExample, messages.alerts.manualRecordOnly].join("\n"),
       buildOnboardingKeyboard(locale),
     ),
   ];
@@ -443,7 +440,6 @@ function buildPositionShortcutActions(
         messages.command.recordPositionShortcut(asset),
         messages.command.recordPositionExample(asset),
         messages.alerts.manualRecordOnly,
-        localizeNoExecution(locale),
       ].join("\n"),
       buildOnboardingKeyboard(locale),
     ),
@@ -576,7 +572,7 @@ function formatNextSteps(steps: string[], locale: SupportedLocale): string {
 function formatStatus(state: TelegramUserStateSnapshot | null, locale: SupportedLocale): string {
   const messages = getMessages(locale);
   if (!state) {
-    return [messages.command.noStoredSetup, messages.command.noStoredSetupHint, localizeNoExecution(locale)].join("\n");
+    return [messages.command.noStoredSetup, messages.command.noStoredSetupHint].join("\n");
   }
 
   return [
@@ -629,7 +625,6 @@ export function buildActionNeededAlertText(input: TelegramActionNeededAlertInput
     messages.alerts.actionNeededHeadline(headline),
     input.summary,
     input.nextStep,
-    localizeNoExecution(locale),
     messages.alerts.manualRecordOnly,
   ].join("\n");
 }

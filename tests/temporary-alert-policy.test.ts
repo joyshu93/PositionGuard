@@ -156,6 +156,6 @@ assertEqual(
   "Temporary policy should classify repeated market-data failures explicitly.",
 );
 assert(
-  marketUnavailableDecision.alert?.message.includes("No trade was executed.") ?? false,
-  "Temporary market-data alerts must preserve the non-execution boundary.",
+  !(marketUnavailableDecision.alert?.message.includes("No trade was executed.") ?? false),
+  "Temporary market-data alerts should no longer append the removed no-execution sentence.",
 );
