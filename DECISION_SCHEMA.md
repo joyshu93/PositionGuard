@@ -192,7 +192,7 @@ The reminder layer is separate from the market-signal alert layer.
 - unchanged manual state is evaluated from user-reported cash, quantity, average entry price, and their reporting/update timestamps
 - reminder delivery has its own cooldown and must still respect sleep mode and missing-chat-id suppression
 - reminder text should focus on refreshing `/setposition` or `/setcash` if the user already acted outside the bot
-- reminder text must remain non-execution framed and keep `No trade was executed.`
+- reminder text must remain non-execution framed
 
 Operator visibility should stay read-only and concise:
 - `/lastdecision` should summarize the latest decision status, summary, created time, alert outcome, regime, trigger state, and invalidation state
@@ -245,7 +245,7 @@ Allowed coaching phrasing includes:
 - `exit plan review`
 - `invalidation review`
 
-These phrases must remain coaching-only. They must not imply order execution, broker connectivity, or any private exchange capability. `No trade was executed.` should remain present in user-facing alert text.
+These phrases must remain coaching-only. They must not imply order execution, broker connectivity, or any private exchange capability.
 
 ## Alert Contract
 The current alert reasons should stay narrow and explicit:
