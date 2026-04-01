@@ -70,6 +70,7 @@ export interface MarketStructureAnalysis {
   riskLevel: DecisionRiskLevel;
   upperRangeChase: boolean;
   pullbackZone: boolean;
+  reclaimLevel: number | null;
   reclaimStructure: boolean;
   breakoutHoldStructure: boolean;
   volumeRecovery: boolean;
@@ -96,7 +97,8 @@ export function analyzeMarketStructure(snapshot: MarketSnapshot): MarketStructur
     "1d": analyzeTimeframe("1d", snapshot.timeframes["1d"].candles, currentPrice),
   };
   const structures = Object.values(timeframes);
-  const reclaimStructure = isFreshReclaim(timeframes["1h"]);
+  const reclaimLevel = getReclaimLevel(timeframes["1h"], timeframes["4h"]);
+  const reclaimStructure = isFreshReclaim(timeframes["1h"], timeframes["4h"]);
   const breakoutHoldStructure = isBreakoutHold(timeframes["1h"], timeframes["4h"]);
   const failedReclaim = isFailedReclaimBelowLevel(timeframes["1h"], timeframes["4h"].support)
     || isFailedReclaimBelowLevel(timeframes["4h"], timeframes["1d"].support);
@@ -111,8 +113,8 @@ export function analyzeMarketStructure(snapshot: MarketSnapshot): MarketStructur
       || (timeframes["1h"].location === "LOWER" && timeframes["4h"].trend !== "DOWN")
     );
   const upperRangeChase = isUpperRangeChase(timeframes, currentPrice, reclaimStructure || breakoutHoldStructure);
-  const volumeRecovery = (timeframes["1h"].indicators.volumeRatio ?? 0) >= 0.85
-    || (timeframes["4h"].indicators.volumeRatio ?? 0) >= 0.9;
+  const volumeRecovery = (timeframes["1h"].indicators.volumeRatio ?? 0) >= 0.8
+    || (timeframes["4h"].indicators.volumeRatio ?? 0) >= 0.88;
   const macdImproving = timeframes["1h"].macdHistogramImproving || timeframes["4h"].macdHistogramImproving;
   const rsiRecovery = isRsiRecovery(timeframes["1h"]) || isRsiRecovery(timeframes["4h"]);
   const bearishMomentumExpansion = isBearishMomentumExpansion(timeframes);
@@ -159,6 +161,7 @@ export function analyzeMarketStructure(snapshot: MarketSnapshot): MarketStructur
     riskLevel,
     upperRangeChase,
     pullbackZone,
+    reclaimLevel,
     reclaimStructure,
     breakoutHoldStructure,
     volumeRecovery,
@@ -388,6 +391,16 @@ function describeRegime(regime: MarketRegime): string {
 function getInvalidationLevel(timeframes: Record<SupportedTimeframe, TimeframeStructure>): number | null {
   const levels = [timeframes["4h"].support, timeframes["1d"].support].filter((value) => Number.isFinite(value) && value > 0);
   return levels.length === 0 ? null : Math.max(...levels);
+}
+
+function getReclaimLevel(oneHour: TimeframeStructure, fourHour: TimeframeStructure): number | null {
+  const reclaimedBarrier = Math.min(oneHour.previousRangeHigh, fourHour.resistance);
+  const higherTimeframeFloor = fourHour.support;
+  const candidates = [
+    reclaimedBarrier,
+    higherTimeframeFloor,
+  ].filter((value): value is number => value !== null && Number.isFinite(value) && value > 0);
+  return candidates.length === 0 ? null : Math.max(...candidates);
 }
 
 function isInvalidationBroken(
@@ -626,33 +639,39 @@ function findSwings(candles: MarketCandle[], fallback: number): { swingHigh: num
   };
 }
 
-function isFreshReclaim(oneHour: TimeframeStructure): boolean {
-  const reclaimLevel = Math.min(oneHour.previousRangeHigh, oneHour.resistance);
-  const buffer = getLevelBuffer(reclaimLevel, oneHour.indicators.atr14, 0.08);
-  const extensionLimit = Math.max(
-    getLevelBuffer(reclaimLevel, oneHour.indicators.atr14, 1.4),
-    reclaimLevel * 0.015,
+function isFreshReclaim(oneHour: TimeframeStructure, fourHour: TimeframeStructure): boolean {
+  const reclaimLevel = getReclaimLevel(oneHour, fourHour);
+  if (reclaimLevel === null) return false;
+  const buffer = Math.max(
+    reclaimLevel * 0.001,
+    (oneHour.indicators.atr14 ?? 0) * 0.05,
   );
-  return reclaimLevel > 0
-    && oneHour.previousClose <= reclaimLevel + buffer
+  const extensionLimit = Math.max(
+    getLevelBuffer(reclaimLevel, oneHour.indicators.atr14, 2.2),
+    reclaimLevel * 0.025,
+  );
+  return oneHour.previousClose <= reclaimLevel + buffer
     && oneHour.latestClose >= reclaimLevel + buffer
     && oneHour.latestClose <= reclaimLevel + extensionLimit
     && oneHour.aboveEma20;
 }
 
 function isBreakoutHold(oneHour: TimeframeStructure, fourHour: TimeframeStructure): boolean {
-  const holdLevel = Math.min(oneHour.previousRangeHigh, fourHour.resistance);
-  const buffer = getLevelBuffer(holdLevel, oneHour.indicators.atr14, 0.05);
+  const holdLevel = Math.min(oneHour.previousRangeHigh, oneHour.resistance);
+  const buffer = Math.max(
+    holdLevel * 0.001,
+    (oneHour.indicators.atr14 ?? 0) * 0.05,
+  );
   const extensionLimit = Math.max(
-    getLevelBuffer(holdLevel, oneHour.indicators.atr14, 1.2),
-    holdLevel * 0.012,
+    getLevelBuffer(holdLevel, oneHour.indicators.atr14, 2),
+    holdLevel * 0.02,
   );
   return holdLevel > 0
     && oneHour.previousClose >= holdLevel - buffer
     && oneHour.latestClose >= holdLevel - buffer
     && oneHour.latestClose <= holdLevel + extensionLimit
     && oneHour.aboveEma20
-    && fourHour.trend !== "DOWN";
+    && (fourHour.trend !== "DOWN" || fourHour.aboveEma20);
 }
 
 function isRsiRecovery(structure: TimeframeStructure): boolean {

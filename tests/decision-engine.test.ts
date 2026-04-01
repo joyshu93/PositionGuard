@@ -181,6 +181,11 @@ assert(
   noPositionChaseDecision.summary.includes("not justified right now"),
   "Chase conditions should be described as a rejected entry review, not as an execution instruction.",
 );
+assertEqual(
+  noPositionChaseDecision.alert,
+  null,
+  "Silent non-action should remain the rule when a setup is not actionable.",
+);
 
 const reclaimContinuationSnapshot = buildMarketSnapshot({
   market: "KRW-BTC",
@@ -188,7 +193,8 @@ const reclaimContinuationSnapshot = buildMarketSnapshot({
   oneHourCloses: buildSeries([
     { start: 100, end: 158, length: 220 },
     { start: 158, end: 151, length: 10 },
-    { start: 151, end: 166, length: 10 },
+    { start: 151, end: 160, length: 8 },
+    { start: 160, end: 166, length: 2 },
   ]),
   fourHourCloses: buildSeries([
     { start: 100, end: 156, length: 220 },
@@ -206,6 +212,54 @@ const reclaimContinuationSnapshot = buildMarketSnapshot({
   tradePrice: 166,
 });
 
+const reclaimMutedVolumeSnapshot = buildMarketSnapshot({
+  market: "KRW-BTC",
+  asset: "BTC",
+  oneHourCloses: buildSeries([
+    { start: 100, end: 146, length: 180 },
+    { start: 146, end: 139, length: 12 },
+    { start: 139, end: 148, length: 8 },
+  ]),
+  fourHourCloses: buildSeries([
+    { start: 100, end: 145, length: 180 },
+    { start: 145, end: 140, length: 12 },
+    { start: 140, end: 146, length: 8 },
+  ]),
+  oneDayCloses: buildSeries([
+    { start: 100, end: 147, length: 180 },
+    { start: 147, end: 142, length: 12 },
+    { start: 142, end: 148, length: 8 },
+  ]),
+  oneHourVolumeMultiplier: 0.78,
+  fourHourVolumeMultiplier: 0.88,
+  oneDayVolumeMultiplier: 1.0,
+  tradePrice: 147,
+});
+
+const reclaimNearMissSnapshot = buildMarketSnapshot({
+  market: "KRW-BTC",
+  asset: "BTC",
+  oneHourCloses: buildSeries([
+    { start: 100, end: 145, length: 180 },
+    { start: 145, end: 139, length: 12 },
+    { start: 139, end: 147, length: 8 },
+  ]),
+  fourHourCloses: buildSeries([
+    { start: 100, end: 144, length: 180 },
+    { start: 144, end: 140, length: 12 },
+    { start: 140, end: 146, length: 8 },
+  ]),
+  oneDayCloses: buildSeries([
+    { start: 100, end: 146, length: 180 },
+    { start: 146, end: 142, length: 12 },
+    { start: 142, end: 148, length: 8 },
+  ]),
+  oneHourVolumeMultiplier: 0.92,
+  fourHourVolumeMultiplier: 0.98,
+  oneDayVolumeMultiplier: 1.0,
+  tradePrice: 146,
+});
+
 const reclaimEntryDecision = runDecisionEngine(
   buildDecisionContext({
     userState: withPositionState({
@@ -213,7 +267,30 @@ const reclaimEntryDecision = runDecisionEngine(
       averageEntryPrice: 0,
     }),
     asset: "BTC",
-    marketSnapshot: reclaimContinuationSnapshot,
+    marketSnapshot: buildMarketSnapshot({
+      market: "KRW-BTC",
+      asset: "BTC",
+      oneHourCloses: buildSeries([
+        { start: 100, end: 158, length: 220 },
+        { start: 158, end: 151, length: 10 },
+        { start: 151, end: 160, length: 8 },
+        { start: 160, end: 166, length: 2 },
+      ]),
+      fourHourCloses: buildSeries([
+        { start: 100, end: 156, length: 220 },
+        { start: 156, end: 150, length: 10 },
+        { start: 150, end: 162, length: 10 },
+      ]),
+      oneDayCloses: buildSeries([
+        { start: 100, end: 160, length: 220 },
+        { start: 160, end: 156, length: 10 },
+        { start: 156, end: 164, length: 10 },
+      ]),
+      oneHourVolumeMultiplier: 1.45,
+      fourHourVolumeMultiplier: 1.2,
+      oneDayVolumeMultiplier: 1.08,
+      tradePrice: 166,
+    }),
     generatedAt: "2026-01-01T01:00:00.000Z",
   }),
 );
@@ -228,6 +305,103 @@ assert(
     reclaimEntryDecision.reasons.some((reason: string) => reason.includes("valid reclaim")) &&
     !reclaimEntryDecision.diagnostics?.setup.blockers.some((blocker: string) => blocker.includes("extended")),
   "Reclaim-path entries should explain that a valid reclaim is treated differently from a pure upper-range chase.",
+);
+assert(
+  (reclaimEntryDecision.diagnostics?.risk.invalidationLevel ?? null)
+    !== (entryReviewDecision.diagnostics?.risk.invalidationLevel ?? null),
+  "Reclaim-path invalidation should be calculated differently from the broader pullback invalidation framework.",
+);
+
+const nearMissReclaimSnapshot = buildMarketSnapshot({
+  market: "KRW-BTC",
+  asset: "BTC",
+  oneHourCloses: buildSeries([
+    { start: 100, end: 145, length: 180 },
+    { start: 145, end: 139, length: 12 },
+    { start: 139, end: 147, length: 8 },
+  ]),
+  fourHourCloses: buildSeries([
+    { start: 100, end: 144, length: 180 },
+    { start: 144, end: 140, length: 12 },
+    { start: 140, end: 146, length: 8 },
+  ]),
+  oneDayCloses: buildSeries([
+    { start: 100, end: 146, length: 180 },
+    { start: 146, end: 142, length: 12 },
+    { start: 142, end: 148, length: 8 },
+  ]),
+  oneHourVolumeMultiplier: 0.55,
+  fourHourVolumeMultiplier: 0.7,
+  oneDayVolumeMultiplier: 0.9,
+  tradePrice: 146,
+});
+
+const nearMissReclaimDecision = runDecisionEngine(
+  buildDecisionContext({
+    userState: withPositionState({
+      quantity: 0,
+      averageEntryPrice: 0,
+    }),
+    asset: "BTC",
+    marketSnapshot: nearMissReclaimSnapshot,
+    generatedAt: "2026-01-01T01:00:00.000Z",
+  }),
+);
+
+assertEqual(
+  nearMissReclaimDecision.status,
+  "NO_ACTION",
+  "Near-miss reclaim structure should stay silent instead of creating a softer alert tier.",
+);
+assertEqual(
+  nearMissReclaimDecision.alert,
+  null,
+  "Non-actionable reclaim near-misses must keep the binary rule: no ACTION_NEEDED means no alert.",
+);
+assert(
+  (reclaimEntryDecision.diagnostics?.risk.invalidationLevel ?? null) !== (entryReviewDecision.diagnostics?.risk.invalidationLevel ?? null),
+  "Reclaim-path invalidation should be calculated differently from the broader pullback invalidation framework.",
+);
+
+const reclaimMutedVolumeDecision = runDecisionEngine(
+  buildDecisionContext({
+    userState: withPositionState({
+      quantity: 0,
+      averageEntryPrice: 0,
+    }),
+    asset: "BTC",
+    marketSnapshot: reclaimMutedVolumeSnapshot,
+    generatedAt: "2026-01-01T01:00:00.000Z",
+  }),
+);
+
+assertEqual(
+  reclaimMutedVolumeDecision.status,
+  "ACTION_NEEDED",
+  "A high-quality reclaim should still become actionable without requiring every extra continuation confirmation to line up.",
+);
+
+const reclaimNearMissDecision = runDecisionEngine(
+  buildDecisionContext({
+    userState: withPositionState({
+      quantity: 0,
+      averageEntryPrice: 0,
+    }),
+    asset: "BTC",
+    marketSnapshot: reclaimNearMissSnapshot,
+    generatedAt: "2026-01-01T01:00:00.000Z",
+  }),
+);
+
+assertEqual(
+  reclaimNearMissDecision.status,
+  "NO_ACTION",
+  "A near-miss reclaim that does not hold should stay silent.",
+);
+assertEqual(
+  reclaimNearMissDecision.alert,
+  null,
+  "Non-actionable reclaim near-misses must not create any intermediate alert tier.",
 );
 
 const breakdownSnapshot = buildMarketSnapshot({
@@ -374,13 +548,13 @@ const fallingKnifeDecision = runDecisionEngine(
 
 assertEqual(
   fallingKnifeDecision.status,
-  "ACTION_NEEDED",
-  "Falling-knife breakdown cases should escalate to a reduce review instead of an add-buy review.",
+  "NO_ACTION",
+  "Borderline weakness should stay silent instead of forcing an early reduce review.",
 );
 assertEqual(
-  fallingKnifeDecision.alert?.reason ?? null,
-  "REDUCE_REVIEW_REQUIRED",
-  "Breakdown pressure should map to a reduce-review alert.",
+  fallingKnifeDecision.alert,
+  null,
+  "Binary notification behavior should remain intact for non-actionable weakness.",
 );
 
 const addBuyTooHighDecision = runDecisionEngine(
@@ -399,6 +573,11 @@ assertEqual(
   addBuyTooHighDecision.status,
   "NO_ACTION",
   "Existing positions should stay quiet when price is too extended for a staged add-buy review.",
+);
+assertEqual(
+  addBuyTooHighDecision.alert,
+  null,
+  "No new notification tier should be introduced for non-actionable add-buy cases.",
 );
 
 const earlyRecoverySnapshot = buildMarketSnapshot({
@@ -558,6 +737,11 @@ assert(
   "Reduce should not fire from a single weak symptom without confirmed structure damage plus additional weakness.",
 );
 
+assert(
+  nearMissReclaimDecision.status === "NO_ACTION" && nearMissReclaimDecision.alert === null,
+  "The engine should preserve the binary user-facing contract instead of introducing an intermediate notification tier.",
+);
+
 const deepDrawdownDecision = runDecisionEngine(
   buildDecisionContext({
     userState: withPositionState({
@@ -611,11 +795,6 @@ assert(
 assert(
   addBuyDecision.alert?.message.includes("No trade was executed.") ?? false,
   "Add-buy review alerts must remain non-execution framed.",
-);
-
-assert(
-  fallingKnifeDecision.alert?.message.includes("No trade was executed.") ?? false,
-  "Reduce-review alerts must remain non-execution framed.",
 );
 
 assert(
