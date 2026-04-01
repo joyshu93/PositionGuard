@@ -104,7 +104,7 @@ Future statuses may later include scenario or management categories, but they sh
 The current engine may attach structured diagnostics with these sections:
 
 - `regime`
-  - `classification`: `BULL_TREND` | `PULLBACK_IN_UPTREND` | `RANGE` | `WEAK_DOWNTREND` | `BREAKDOWN_RISK`
+  - `classification`: `BULL_TREND` | `PULLBACK_IN_UPTREND` | `EARLY_RECOVERY` | `RECLAIM_ATTEMPT` | `RANGE` | `WEAK_DOWNTREND` | `BREAKDOWN_RISK`
   - `summary`
 - `setup`
   - `kind`: `ENTRY` | `ADD_BUY` | `REDUCE` | `NONE`
@@ -209,6 +209,13 @@ The current MVP engine may summarize:
 - whether the recorded average entry is in profit or drawdown
 - whether available cash exists for a first entry review or a staged add-buy review
 - whether invalidation or risk review is becoming urgent for an existing spot position
+- whether the current constructive path is a pullback, a reclaim attempt, or an early recovery
+
+Current conservative confirmation details include:
+
+- upper-range chase protection that stays active for obvious late extensions, but does not automatically veto a valid reclaim / breakout-hold
+- breakdown and invalidation checks that prefer timeframe candle closes and ATR-buffered support failure over a single live-price wick
+- reduce-side confirmation that prefers structure damage plus at least one supporting weakness signal instead of a single indicator wobble
 
 ## Allowed Coaching Phrases
 Allowed coaching phrasing includes:

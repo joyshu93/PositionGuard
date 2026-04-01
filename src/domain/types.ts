@@ -103,6 +103,8 @@ export type DecisionStatus =
 export type MarketRegime =
   | "BULL_TREND"
   | "PULLBACK_IN_UPTREND"
+  | "EARLY_RECOVERY"
+  | "RECLAIM_ATTEMPT"
   | "RANGE"
   | "WEAK_DOWNTREND"
   | "BREAKDOWN_RISK";

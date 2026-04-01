@@ -314,9 +314,9 @@ Decision outputs are structured as coaching summaries and reasons, and the curre
 
 Current coaching behavior is intentionally narrow and rule-based:
 
-- `entry review`: possible only when a tracked asset has no recorded spot inventory, cash is available, higher timeframe structure is not in outright breakdown risk, current price is not chasing the upper range, invalidation is explainable, and the lower-timeframe trigger has improved enough to justify a conservative spot entry review
-- `add-buy review`: possible only when a recorded spot position exists, cash remains available, higher timeframe structure is still constructive or neutral, the current location looks more like a pullback or reclaim than a chase, and the trigger is supportive enough for a staged add-buy review
-- `reduce review`: possible when drawdown, lower-range pressure, invalidation damage, and higher timeframe weakness line up strongly enough that invalidation-first review is needed
+- `entry review`: possible only when a tracked asset has no recorded spot inventory, cash is available, higher timeframe structure is not in outright breakdown risk, invalidation is explainable, and either a constructive pullback path or a valid reclaim / breakout-hold path is present without obvious chase damage
+- `add-buy review`: possible only when a recorded spot position exists, cash remains available, higher timeframe structure is still constructive or improving, the current location looks like a controlled pullback or a valid reclaim-strength continuation, and the trigger is supportive enough for a staged add-buy review
+- `reduce review`: possible when confirmed structure damage plus at least one supporting weakness signal line up strongly enough that invalidation-first review is needed
 - `sell review` / `exit plan review`: these phrases may appear inside reduce-side coaching when support has failed materially, but they remain coaching-only and non-execution framed
 
 None of these messages execute anything. They remain coaching-only, scenario-based, and always preserve the record-only boundary.
@@ -362,6 +362,13 @@ The current decision flow is:
 3. confirm or reject the lower-timeframe trigger
 4. evaluate invalidation and risk
 5. produce conservative coaching wording and alert policy output
+
+Recent conservative refinements in that flow:
+
+- pullback and reclaim / continuation setups are handled separately so valid reclaim participation is not auto-blocked by every upper-range condition
+- breakdown and invalidation lean on timeframe closes and ATR-buffered support failure rather than a single live-price wick
+- intermediate recovery regimes such as `EARLY_RECOVERY` and `RECLAIM_ATTEMPT` sit between outright bull trend and weak downtrend
+- reduce-side confirmation now prefers confirmed structure damage plus supporting weakness instead of reacting to a single RSI or MACD wobble
 
 Current operator visibility remains concise but now includes the latest regime, trigger state, invalidation state, and reminder evaluation in `/hourlyhealth`. `/lastalert` remains a compact record of the most recent sent alert, including state-update reminders when they were sent.
 

@@ -130,7 +130,8 @@ assert(
   entryReviewDecision.summary.includes("spot entry review") &&
     entryReviewDecision.reasons.some((reason: string) => reason.includes("Regime:")) &&
     entryReviewDecision.reasons.some((reason: string) => reason.includes("Invalidation")) &&
-    entryReviewDecision.reasons.some((reason: string) => reason.includes("No chase buying")),
+    entryReviewDecision.reasons.some((reason: string) => reason.includes("No chase buying")) &&
+    entryReviewDecision.alert?.message.includes("No trade was executed."),
   "Entry-review reasons should explain regime, invalidation, and no-chase framing.",
 );
 
@@ -141,20 +142,22 @@ const chaseSnapshot = buildMarketSnapshot({
     { start: 100, end: 150, length: 170 },
     { start: 150, end: 175, length: 35 },
     { start: 175, end: 182, length: 20 },
+    { start: 182, end: 186, length: 6 },
   ]),
   fourHourCloses: buildSeries([
     { start: 100, end: 145, length: 170 },
     { start: 145, end: 170, length: 35 },
-    { start: 170, end: 176, length: 20 },
+    { start: 170, end: 178, length: 20 },
   ]),
   oneDayCloses: buildSeries([
     { start: 100, end: 160, length: 170 },
     { start: 160, end: 178, length: 35 },
-    { start: 178, end: 184, length: 20 },
+    { start: 178, end: 186, length: 20 },
   ]),
-  oneHourVolumeMultiplier: 1.1,
-  fourHourVolumeMultiplier: 1.1,
+  oneHourVolumeMultiplier: 1.25,
+  fourHourVolumeMultiplier: 1.15,
   oneDayVolumeMultiplier: 1.05,
+  tradePrice: 188,
 });
 
 const noPositionChaseDecision = runDecisionEngine(
@@ -177,6 +180,54 @@ assertEqual(
 assert(
   noPositionChaseDecision.summary.includes("not justified right now"),
   "Chase conditions should be described as a rejected entry review, not as an execution instruction.",
+);
+
+const reclaimContinuationSnapshot = buildMarketSnapshot({
+  market: "KRW-BTC",
+  asset: "BTC",
+  oneHourCloses: buildSeries([
+    { start: 100, end: 158, length: 220 },
+    { start: 158, end: 151, length: 10 },
+    { start: 151, end: 166, length: 10 },
+  ]),
+  fourHourCloses: buildSeries([
+    { start: 100, end: 156, length: 220 },
+    { start: 156, end: 150, length: 10 },
+    { start: 150, end: 162, length: 10 },
+  ]),
+  oneDayCloses: buildSeries([
+    { start: 100, end: 160, length: 220 },
+    { start: 160, end: 156, length: 10 },
+    { start: 156, end: 164, length: 10 },
+  ]),
+  oneHourVolumeMultiplier: 1.45,
+  fourHourVolumeMultiplier: 1.2,
+  oneDayVolumeMultiplier: 1.08,
+  tradePrice: 166,
+});
+
+const reclaimEntryDecision = runDecisionEngine(
+  buildDecisionContext({
+    userState: withPositionState({
+      quantity: 0,
+      averageEntryPrice: 0,
+    }),
+    asset: "BTC",
+    marketSnapshot: reclaimContinuationSnapshot,
+    generatedAt: "2026-01-01T01:00:00.000Z",
+  }),
+);
+
+assertEqual(
+  reclaimEntryDecision.status,
+  "ACTION_NEEDED",
+  "Supportive reclaim-continuation structure should still open an entry review instead of being auto-blocked as a chase.",
+);
+assert(
+  reclaimEntryDecision.summary.includes("reclaim structure") &&
+    reclaimEntryDecision.reasons.some((reason: string) => reason.includes("valid reclaim")) &&
+    !reclaimEntryDecision.diagnostics?.setup.blockers.some((blocker: string) => blocker.includes("extended")),
+  "Reclaim-path entries should explain that a valid reclaim is treated differently from a pure upper-range chase.",
 );
 
 const breakdownSnapshot = buildMarketSnapshot({
@@ -221,8 +272,42 @@ assertEqual(
   "Daily breakdown risk should block entry review.",
 );
 assert(
-  dailyBreakdownDecision.reasons.some((reason: string) => reason.includes("breakdown risk")),
-  "Daily breakdown risk should be explicit in the reasoning.",
+  dailyBreakdownDecision.reasons.some((reason: string) => reason.includes("Invalidation"))
+    || dailyBreakdownDecision.reasons.some((reason: string) => reason.includes("weak downtrend")),
+  "Breakdown-side entry blocking should stay explicit in the reasoning even if the regime remains weak-downtrend rather than full breakdown risk.",
+);
+
+const wickOnlyDipDecision = runDecisionEngine(
+  buildDecisionContext({
+    userState: withPositionState({
+      quantity: 0.25,
+      averageEntryPrice: 154,
+    }),
+    asset: "BTC",
+    marketSnapshot: buildMarketSnapshot({
+      market: "KRW-BTC",
+      asset: "BTC",
+      oneHourCloses: bullishPullbackSnapshot.timeframes["1h"].candles.map((candle) => candle.closePrice),
+      fourHourCloses: bullishPullbackSnapshot.timeframes["4h"].candles.map((candle) => candle.closePrice),
+      oneDayCloses: bullishPullbackSnapshot.timeframes["1d"].candles.map((candle) => candle.closePrice),
+      oneHourVolumeMultiplier: 1.35,
+      fourHourVolumeMultiplier: 1.15,
+      oneDayVolumeMultiplier: 1.05,
+      tradePrice: 150,
+    }),
+    generatedAt: "2026-01-01T01:00:00.000Z",
+  }),
+);
+
+assert(
+  wickOnlyDipDecision.status !== "ACTION_NEEDED"
+    || wickOnlyDipDecision.alert?.reason !== "REDUCE_REVIEW_REQUIRED",
+  "A wick-only ticker dip should not confirm higher-timeframe breakdown when candle closes still hold support.",
+);
+assertEqual(
+  wickOnlyDipDecision.diagnostics?.risk.invalidationState ?? null,
+  "CLEAR",
+  "Invalidation should remain clear when support has not failed on a closing basis.",
 );
 
 const addBuyDecision = runDecisionEngine(
@@ -251,6 +336,28 @@ assert(
   addBuyDecision.summary.includes("add-buy review") &&
     addBuyDecision.reasons.some((reason: string) => reason.includes("No chase buying")),
   "Add-buy reviews should stay coaching-oriented and non-execution based.",
+);
+
+const reclaimStrengthAddDecision = runDecisionEngine(
+  buildDecisionContext({
+    userState: withPositionState({
+      quantity: 0.25,
+      averageEntryPrice: 155,
+    }),
+    asset: "BTC",
+    marketSnapshot: reclaimContinuationSnapshot,
+    generatedAt: "2026-01-01T01:00:00.000Z",
+  }),
+);
+
+assertEqual(
+  reclaimStrengthAddDecision.status,
+  "ACTION_NEEDED",
+  "Existing positions should allow a staged strength add after a valid reclaim keeps holding.",
+);
+assert(
+  reclaimStrengthAddDecision.summary.includes("valid reclaim strength"),
+  "Strength-add paths should be distinct from pullback add paths in the coaching summary.",
 );
 
 const fallingKnifeDecision = runDecisionEngine(
@@ -294,6 +401,100 @@ assertEqual(
   "Existing positions should stay quiet when price is too extended for a staged add-buy review.",
 );
 
+const earlyRecoverySnapshot = buildMarketSnapshot({
+  market: "KRW-BTC",
+  asset: "BTC",
+  oneHourCloses: buildSeries([
+    { start: 160, end: 130, length: 120 },
+    { start: 130, end: 126, length: 12 },
+    { start: 126, end: 134, length: 10 },
+    { start: 134, end: 138, length: 6 },
+  ]),
+  fourHourCloses: buildSeries([
+    { start: 165, end: 136, length: 120 },
+    { start: 136, end: 132, length: 10 },
+    { start: 132, end: 137, length: 8 },
+  ]),
+  oneDayCloses: buildSeries([
+    { start: 170, end: 142, length: 120 },
+    { start: 142, end: 138, length: 10 },
+    { start: 138, end: 140, length: 8 },
+  ]),
+  oneHourVolumeMultiplier: 1.4,
+  fourHourVolumeMultiplier: 1.15,
+  oneDayVolumeMultiplier: 1.0,
+  tradePrice: 139,
+});
+
+const earlyRecoveryDecision = runDecisionEngine(
+  buildDecisionContext({
+    userState: withPositionState({
+      quantity: 0,
+      averageEntryPrice: 0,
+    }),
+    asset: "BTC",
+    marketSnapshot: earlyRecoverySnapshot,
+    generatedAt: "2026-01-01T01:00:00.000Z",
+  }),
+);
+
+assert(
+  earlyRecoveryDecision.diagnostics?.regime?.classification === "EARLY_RECOVERY"
+    || earlyRecoveryDecision.diagnostics?.regime?.classification === "RECLAIM_ATTEMPT",
+  "Improving but not fully bullish structure should classify as an intermediate recovery regime instead of a broad weak downtrend.",
+);
+assert(
+  earlyRecoveryDecision.diagnostics?.setup.state !== "BLOCKED",
+  "Constructive early-recovery structure should still allow at least a cautious review posture instead of being auto-blocked.",
+);
+
+const weakDowntrendSnapshot = buildMarketSnapshot({
+  market: "KRW-BTC",
+  asset: "BTC",
+  oneHourCloses: buildSeries([
+    { start: 160, end: 145, length: 120 },
+    { start: 145, end: 140, length: 18 },
+    { start: 140, end: 141, length: 6 },
+  ]),
+  fourHourCloses: buildSeries([
+    { start: 165, end: 150, length: 120 },
+    { start: 150, end: 145, length: 18 },
+    { start: 145, end: 146, length: 6 },
+  ]),
+  oneDayCloses: buildSeries([
+    { start: 170, end: 155, length: 120 },
+    { start: 155, end: 150, length: 18 },
+    { start: 150, end: 151, length: 6 },
+  ]),
+  oneHourVolumeMultiplier: 0.9,
+  fourHourVolumeMultiplier: 0.9,
+  oneDayVolumeMultiplier: 0.95,
+  tradePrice: 141,
+});
+
+const weakDowntrendDecision = runDecisionEngine(
+  buildDecisionContext({
+    userState: withPositionState({
+      quantity: 0,
+      averageEntryPrice: 0,
+    }),
+    asset: "BTC",
+    marketSnapshot: weakDowntrendSnapshot,
+    generatedAt: "2026-01-01T01:00:00.000Z",
+  }),
+);
+
+assertEqual(
+  weakDowntrendDecision.diagnostics?.regime?.classification ?? null,
+  "WEAK_DOWNTREND",
+  "Soft but still unimproved structure should remain in the weak-downtrend bucket.",
+);
+assertEqual(
+  weakDowntrendDecision.status,
+  "NO_ACTION",
+  "Weak downtrends should still block bad entry setups.",
+);
+
 const reduceReviewDecision = runDecisionEngine(
   buildDecisionContext({
     userState: withPositionState({
@@ -305,23 +506,24 @@ const reduceReviewDecision = runDecisionEngine(
       market: "KRW-BTC",
       asset: "BTC",
       oneHourCloses: buildSeries([
-        { start: 170, end: 155, length: 150 },
-        { start: 155, end: 145, length: 30 },
-        { start: 145, end: 132, length: 25 },
+        { start: 160, end: 142, length: 120 },
+        { start: 142, end: 134, length: 18 },
+        { start: 134, end: 132, length: 6 },
       ]),
       fourHourCloses: buildSeries([
-        { start: 172, end: 158, length: 150 },
-        { start: 158, end: 142, length: 30 },
-        { start: 142, end: 128, length: 25 },
+        { start: 165, end: 145, length: 120 },
+        { start: 145, end: 136, length: 18 },
+        { start: 136, end: 134, length: 6 },
       ]),
       oneDayCloses: buildSeries([
-        { start: 175, end: 162, length: 150 },
-        { start: 162, end: 146, length: 30 },
-        { start: 146, end: 130, length: 25 },
+        { start: 170, end: 150, length: 120 },
+        { start: 150, end: 140, length: 18 },
+        { start: 140, end: 138, length: 6 },
       ]),
-      oneHourVolumeMultiplier: 1.3,
-      fourHourVolumeMultiplier: 1.2,
+      oneHourVolumeMultiplier: 0.9,
+      fourHourVolumeMultiplier: 0.95,
       oneDayVolumeMultiplier: 1.15,
+      tradePrice: 132,
     }),
     generatedAt: "2026-01-01T01:00:00.000Z",
   }),
@@ -338,6 +540,24 @@ assert(
   "Reduce-review output should explain the survival-first framing.",
 );
 
+const singleWeakSignalDecision = runDecisionEngine(
+  buildDecisionContext({
+    userState: withPositionState({
+      quantity: 0.25,
+      averageEntryPrice: 162,
+    }),
+    asset: "BTC",
+    marketSnapshot: bullishPullbackSnapshot,
+    generatedAt: "2026-01-01T01:00:00.000Z",
+  }),
+);
+
+assert(
+  singleWeakSignalDecision.alert?.reason !== "REDUCE_REVIEW_REQUIRED"
+    && singleWeakSignalDecision.diagnostics?.trigger.state !== "BEARISH_CONFIRMATION",
+  "Reduce should not fire from a single weak symptom without confirmed structure damage plus additional weakness.",
+);
+
 const deepDrawdownDecision = runDecisionEngine(
   buildDecisionContext({
     userState: withPositionState({
@@ -345,7 +565,29 @@ const deepDrawdownDecision = runDecisionEngine(
       averageEntryPrice: 170,
     }),
     asset: "BTC",
-    marketSnapshot: breakdownSnapshot,
+    marketSnapshot: buildMarketSnapshot({
+      market: "KRW-BTC",
+      asset: "BTC",
+      oneHourCloses: buildSeries([
+        { start: 160, end: 142, length: 120 },
+        { start: 142, end: 134, length: 18 },
+        { start: 134, end: 132, length: 6 },
+      ]),
+      fourHourCloses: buildSeries([
+        { start: 165, end: 145, length: 120 },
+        { start: 145, end: 136, length: 18 },
+        { start: 136, end: 134, length: 6 },
+      ]),
+      oneDayCloses: buildSeries([
+        { start: 170, end: 150, length: 120 },
+        { start: 150, end: 140, length: 18 },
+        { start: 140, end: 138, length: 6 },
+      ]),
+      oneHourVolumeMultiplier: 0.9,
+      fourHourVolumeMultiplier: 0.95,
+      oneDayVolumeMultiplier: 1.15,
+      tradePrice: 132,
+    }),
     generatedAt: "2026-01-01T01:00:00.000Z",
   }),
 );
