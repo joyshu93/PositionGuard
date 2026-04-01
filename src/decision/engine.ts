@@ -18,10 +18,23 @@ import {
 type SetupKind = "ENTRY" | "ADD_BUY" | "REDUCE" | "NONE";
 type BullishPath = "PULLBACK_ENTRY" | "RECLAIM_ENTRY" | "PULLBACK_ADD" | "STRENGTH_ADD" | null;
 type InvalidationMode = "PULLBACK" | "RECLAIM" | "REDUCE";
+type SetupBlockerCode =
+  | "NO_CASH"
+  | "BREAKDOWN_RISK"
+  | "WEAK_DOWNTREND"
+  | "UPPER_RANGE_CHASE"
+  | "NO_VALID_PATH"
+  | "INVALIDATION_UNCLEAR"
+  | "EMA_RECOVERY_INCOMPLETE"
+  | "LOSS_TOO_DEEP"
+  | "ATR_SHOCK"
+  | "FOUR_HOUR_SUPPORT_WEAKENING";
+type SetupBlockerSeverity = "HARD" | "SOFT";
 
 interface SetupEval { kind: SetupKind; state: DecisionSetupState; supports: string[]; blockers: string[]; }
 interface TriggerEval { state: DecisionDiagnostics["trigger"]["state"]; confirmed: string[]; missing: string[]; }
 interface RiskEval { level: DecisionRiskLevel; invalidationState: DecisionDiagnostics["risk"]["invalidationState"]; invalidationLevel: number | null; notes: string[]; }
+interface SetupBlocker { code: SetupBlockerCode; severity: SetupBlockerSeverity; message: string; }
 
 export function runDecisionEngine(context: DecisionContext): DecisionResult {
   if (!context.setup.isReady) return baseResult(context, "SETUP_INCOMPLETE", "Manual setup is incomplete; waiting for user-reported inputs.", [`Missing setup items: ${context.setup.missingItems.join(", ")}.`, "PositionGuard only works from user-reported state."], false);
@@ -114,39 +127,45 @@ function evaluateReduce(context: DecisionContext, analysis: PositionStructureAna
 
 function assessEntrySetup(analysis: MarketStructureAnalysis, hasCash: boolean, path: BullishPath): SetupEval {
   const supports: string[] = [];
-  const blockers: string[] = [];
-  if (!hasCash) blockers.push("No available cash is recorded for a staged spot review."); else supports.push("Available cash is recorded for a staged spot review.");
-  if (analysis.regime === "BREAKDOWN_RISK") blockers.push("Daily structure is in breakdown risk.");
-  else if (analysis.regime === "WEAK_DOWNTREND") blockers.push("Higher timeframe structure is still weak enough that a new entry review is not justified.");
+  const blockers: SetupBlocker[] = [];
+  if (!hasCash) blockers.push(hardBlocker("NO_CASH", "No available cash is recorded for a staged spot review.")); else supports.push("Available cash is recorded for a staged spot review.");
+  if (analysis.regime === "BREAKDOWN_RISK") blockers.push(hardBlocker("BREAKDOWN_RISK", "Daily structure is in breakdown risk."));
+  else if (analysis.regime === "WEAK_DOWNTREND") blockers.push(hardBlocker("WEAK_DOWNTREND", "Higher timeframe structure is still weak enough that a new entry review is not justified."));
   else supports.push(`Regime is ${regimeText(analysis.regime)}.`);
-  if (analysis.upperRangeChase && path !== "RECLAIM_ENTRY") blockers.push("Current price is already too extended in the upper part of the recent range."); else supports.push(path === "RECLAIM_ENTRY" ? "Continuation structure is good enough that the no-chase filter is not automatically disqualifying it." : "No chase condition is present.");
+  if (analysis.upperRangeChase) {
+    blockers.push(softBlocker("UPPER_RANGE_CHASE", "Current price is already too extended in the upper part of the recent range."));
+    if (path === "RECLAIM_ENTRY") supports.push("Continuation structure is good enough that late-extension risk is treated as a soft caution, not an automatic disqualification.");
+  } else supports.push(path === "RECLAIM_ENTRY" ? "Continuation structure is good enough that the no-chase filter is not automatically disqualifying it." : "No chase condition is present.");
   if (path === "PULLBACK_ENTRY") supports.push("Current location offers a pullback-style entry path.");
   else if (path === "RECLAIM_ENTRY") supports.push("Current location offers a reclaim or breakout-hold entry path.");
-  else blockers.push("Current location does not yet offer a clear pullback or reclaim structure.");
-  if (getModeInvalidationState(analysis, getInvalidationMode(path)) === "CLEAR") supports.push(path === "RECLAIM_ENTRY" ? "Invalidation is clear from the reclaimed level holding." : "Invalidation remains explainable from recent 4h and daily support."); else blockers.push("Invalidation is not clear enough yet.");
-  if (analysis.timeframes["4h"].emaStackBullish || analysis.timeframes["1d"].emaStackBullish || analysis.regime === "EARLY_RECOVERY" || analysis.regime === "RECLAIM_ATTEMPT") supports.push("Higher timeframe structure is constructive enough for a conservative review."); else blockers.push("EMA recovery is still incomplete.");
+  else blockers.push(hardBlocker("NO_VALID_PATH", "Current location does not yet offer a clear pullback or reclaim structure."));
+  if (getModeInvalidationState(analysis, getInvalidationMode(path)) === "CLEAR") supports.push(path === "RECLAIM_ENTRY" ? "Invalidation is clear from the reclaimed level holding." : "Invalidation remains explainable from recent 4h and daily support."); else blockers.push(hardBlocker("INVALIDATION_UNCLEAR", "Invalidation is not clear enough yet."));
+  if (analysis.timeframes["4h"].emaStackBullish || analysis.timeframes["1d"].emaStackBullish || analysis.regime === "EARLY_RECOVERY" || analysis.regime === "RECLAIM_ATTEMPT") supports.push("Higher timeframe structure is constructive enough for a conservative review."); else blockers.push(softBlocker("EMA_RECOVERY_INCOMPLETE", "EMA recovery is still incomplete."));
   if ((analysis.timeframes["1h"].indicators.volumeRatio ?? 0) >= 0.75) supports.push("Recent volume is not completely absent.");
-  return { kind: "ENTRY", state: setupState(supports, blockers, path, analysis), supports, blockers };
+  return { kind: "ENTRY", state: setupState(supports, blockers, path, analysis), supports, blockers: blockers.map((blocker) => blocker.message) };
 }
 
 function assessAddBuySetup(analysis: PositionStructureAnalysis, hasCash: boolean, path: BullishPath): SetupEval {
   const supports: string[] = [];
-  const blockers: string[] = [];
-  if (!hasCash) blockers.push("No available cash is recorded for a staged add-buy review."); else supports.push("Available cash remains on record for a staged add-buy review.");
-  if (analysis.regime === "BREAKDOWN_RISK") blockers.push("Higher timeframe structure is already in breakdown risk.");
-  else if (analysis.regime === "WEAK_DOWNTREND" && path !== "STRENGTH_ADD") blockers.push("Higher timeframe structure is still weak enough that averaging is not conservative.");
+  const blockers: SetupBlocker[] = [];
+  if (!hasCash) blockers.push(hardBlocker("NO_CASH", "No available cash is recorded for a staged add-buy review.")); else supports.push("Available cash remains on record for a staged add-buy review.");
+  if (analysis.regime === "BREAKDOWN_RISK") blockers.push(hardBlocker("BREAKDOWN_RISK", "Higher timeframe structure is already in breakdown risk."));
+  else if (analysis.regime === "WEAK_DOWNTREND" && path !== "STRENGTH_ADD") blockers.push(hardBlocker("WEAK_DOWNTREND", "Higher timeframe structure is still weak enough that averaging is not conservative."));
   else supports.push(`Regime is ${regimeText(analysis.regime)}.`);
-  if (analysis.upperRangeChase && path !== "STRENGTH_ADD") blockers.push("Current price is too high inside the recent range for a staged add-buy review."); else supports.push(path === "STRENGTH_ADD" ? "Reclaim strength is good enough that the no-chase filter is narrower here." : "No chase condition is present.");
+  if (analysis.upperRangeChase) {
+    blockers.push(softBlocker("UPPER_RANGE_CHASE", "Current price is too high inside the recent range for a staged add-buy review."));
+    if (path === "STRENGTH_ADD") supports.push("Reclaim strength is good enough that late-extension risk is treated as a soft caution here, not an automatic disqualification.");
+  } else supports.push(path === "STRENGTH_ADD" ? "Reclaim strength is good enough that the no-chase filter is narrower here." : "No chase condition is present.");
   if (path === "PULLBACK_ADD") supports.push("Current location still looks like a pullback area.");
   else if (path === "STRENGTH_ADD") supports.push("Current location supports a strength add only after a valid reclaim.");
-  else blockers.push("Current location does not look like a healthy pullback or reclaim.");
-  if (analysis.pnlPct <= -0.09) blockers.push("Loss is already too deep for conservative averaging."); else supports.push("Loss depth is still inside a staged review zone.");
-  if (analysis.atrShock) blockers.push("Recent move still looks too aggressive relative to ATR.");
+  else blockers.push(hardBlocker("NO_VALID_PATH", "Current location does not look like a healthy pullback or reclaim."));
+  if (analysis.pnlPct <= -0.09) blockers.push(hardBlocker("LOSS_TOO_DEEP", "Loss is already too deep for conservative averaging.")); else supports.push("Loss depth is still inside a staged review zone.");
+  if (analysis.atrShock) blockers.push(hardBlocker("ATR_SHOCK", "Recent move still looks too aggressive relative to ATR."));
   if ((analysis.timeframes["1h"].indicators.volumeRatio ?? 0) >= 0.7) supports.push("Volume has not fully disappeared.");
-  if (analysis.timeframes["4h"].emaStackBullish || analysis.currentPrice >= (analysis.timeframes["4h"].indicators.ema50 ?? analysis.currentPrice)) supports.push("4h EMA20/EMA50 support is still explainable."); else blockers.push("4h EMA support is weakening too much.");
+  if (analysis.timeframes["4h"].emaStackBullish || analysis.currentPrice >= (analysis.timeframes["4h"].indicators.ema50 ?? analysis.currentPrice)) supports.push("4h EMA20/EMA50 support is still explainable."); else blockers.push(hardBlocker("FOUR_HOUR_SUPPORT_WEAKENING", "4h EMA support is weakening too much."));
   if (getModeInvalidationState(analysis, getInvalidationMode(path)) === "CLEAR") supports.push(path === "STRENGTH_ADD" ? "Strength-add invalidation is clear from the reclaimed level." : "Add-buy invalidation remains explainable.");
-  else blockers.push("Invalidation is not clear enough for a staged add-buy review.");
-  return { kind: "ADD_BUY", state: setupState(supports, blockers, path, analysis), supports, blockers };
+  else blockers.push(hardBlocker("INVALIDATION_UNCLEAR", "Invalidation is not clear enough for a staged add-buy review."));
+  return { kind: "ADD_BUY", state: setupState(supports, blockers, path, analysis), supports, blockers: blockers.map((blocker) => blocker.message) };
 }
 
 function assessReduceSetup(analysis: PositionStructureAnalysis): SetupEval {
@@ -307,18 +326,40 @@ function formatInvalidationLevelFromMode(invalidationLevel: number | null, inval
 function price(value: number): string { return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Math.max(0, value)); }
 function setupState(
   supports: string[],
-  blockers: string[],
+  blockers: SetupBlocker[],
   path?: BullishPath,
   analysis?: MarketStructureAnalysis | PositionStructureAnalysis,
 ): DecisionSetupState {
   if (blockers.length === 0) return "READY";
-  if (
-    analysis
-    && (path === "RECLAIM_ENTRY" || path === "STRENGTH_ADD")
-    && hasStrongReclaimActionQuality(analysis)
-    && blockers.length <= 1
-  ) return "READY";
+  if (canStrongReclaimOverride(blockers, path, analysis)) return "READY";
   return supports.length >= 3 && blockers.length <= 2 ? "PROMISING" : "BLOCKED";
+}
+
+function hardBlocker(code: SetupBlockerCode, message: string): SetupBlocker {
+  return { code, severity: "HARD", message };
+}
+
+function softBlocker(code: SetupBlockerCode, message: string): SetupBlocker {
+  return { code, severity: "SOFT", message };
+}
+
+function isHardBlocker(blocker: SetupBlocker): boolean {
+  return blocker.severity === "HARD";
+}
+
+function isSoftBlocker(blocker: SetupBlocker): boolean {
+  return blocker.severity === "SOFT";
+}
+
+function canStrongReclaimOverride(
+  blockers: SetupBlocker[],
+  path?: BullishPath,
+  analysis?: MarketStructureAnalysis | PositionStructureAnalysis,
+): boolean {
+  if (!analysis || (path !== "RECLAIM_ENTRY" && path !== "STRENGTH_ADD")) return false;
+  if (!hasStrongReclaimActionQuality(analysis)) return false;
+  if (blockers.some(isHardBlocker)) return false;
+  return blockers.filter(isSoftBlocker).length <= 1;
 }
 
 function getBullishPath(analysis: MarketStructureAnalysis | PositionStructureAnalysis, isAdd: boolean): BullishPath {
