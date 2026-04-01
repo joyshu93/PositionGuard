@@ -469,7 +469,7 @@ const ko: LocaleMessages = {
       `\uCD5C\uADFC \uAD6C\uC870: \uB808\uC9D0 ${regime} | \uD2B8\uB9AC\uAC70 ${trigger} | \uBB34\uD6A8\uD654 ${invalidation}`,
     latestReminder: (value) => `\uCD5C\uADFC \uB9AC\uB9C8\uC778\uB354: ${value}`,
     latestMarketIssue: (value) => `\uCD5C\uADFC \uC2DC\uC7A5 \uC774\uC288: ${value}`,
-    operationalOnly: "\uC6B4\uC601\uC0C1 \uCC38\uACE0\uC6A9\uC785\uB2C8\uB2E4. \uC8FC\uBB38\uC740 \uC2E4\uD589\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.",
+    operationalOnly: "\uC6B4\uC601\uC0C1 \uCC38\uACE0\uC6A9\uC785\uB2C8\uB2E4.",
     setupIncomplete: "\uC124\uC815 \uBBF8\uC644\uB8CC",
     insufficientData: "\uB370\uC774\uD130 \uBD80\uC871",
     noAction: "\uC870\uCE58 \uC5C6\uC74C",
