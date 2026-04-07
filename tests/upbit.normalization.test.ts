@@ -33,6 +33,11 @@ assertEqual(
   "2026-03-30T02:00:00",
   "Ticker normalization should compose UTC timestamp.",
 );
+assertEqual(
+  ticker.timestamp,
+  1711767600000,
+  "Ticker normalization should preserve the exchange timestamp.",
+);
 
 const fourHourCandle = normalizeUpbitMinuteCandle(
   {
@@ -57,6 +62,11 @@ assertEqual(
   240,
   "4h normalization should map to the 240-minute Upbit endpoint.",
 );
+assertEqual(
+  fourHourCandle.closedAtUtc,
+  "2026-03-30T04:00:00",
+  "Minute candle normalization should derive the UTC close time.",
+);
 
 const dailyCandle = normalizeUpbitDayCandle({
   market: "KRW-BTC",
@@ -73,6 +83,11 @@ const dailyCandle = normalizeUpbitDayCandle({
 
 assertEqual(dailyCandle.timeframe, "1d", "Daily normalization should produce the 1d timeframe.");
 assertEqual(dailyCandle.close, 115, "Daily normalization should map close price.");
+assertEqual(
+  dailyCandle.closedAtUtc,
+  "2026-03-30T00:00:00",
+  "Daily candle normalization should derive the UTC close time.",
+);
 
 const series = normalizeUpbitCandleSeries("KRW-BTC", "1h", [
   {
@@ -105,6 +120,11 @@ assertEqual(
   series.candles[0]?.openedAtUtc ?? null,
   "2026-03-30T01:00:00",
   "Candle series normalization should sort ascending by open time.",
+);
+assertEqual(
+  series.candles[0]?.closedAtUtc ?? null,
+  "2026-03-30T02:00:00",
+  "Candle series normalization should preserve derived close times.",
 );
 assertEqual(
   getCandleEndpoint("4h"),

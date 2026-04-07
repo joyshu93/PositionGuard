@@ -2,6 +2,7 @@ import { createRuntimeConfig, type Env, type RuntimeConfig } from "./env.js";
 import type {
   DecisionLogRecord,
   DecisionResult,
+  MarketSnapshot,
   SupportedAsset,
   SupportedMarket,
   UserStateBundle,
@@ -35,6 +36,25 @@ import { parseTrackedAssets } from "./readiness.js";
 
 const SUPPORTED_ASSETS: SupportedAsset[] = ["BTC", "ETH"];
 const DECISION_LOG_COOLDOWN_MS = 50 * 60 * 1000;
+const SUPPORTED_MARKETS_BY_ASSET: Record<SupportedAsset, SupportedMarket> = {
+  BTC: "KRW-BTC",
+  ETH: "KRW-ETH",
+};
+
+interface MarketTimingDetails {
+  decisionGeneratedAt: string;
+  snapshotFetchedAt: string | null;
+  tickerFetchedAt: string | null;
+  tickerTradeTimeUtc: string | null;
+  tickerTradeTimeKst: string | null;
+  tickerExchangeTimestampMs: number | null;
+  latestHourlyOpenTime: string | null;
+  latestHourlyCloseTime: string | null;
+  latestFourHourOpenTime: string | null;
+  latestFourHourCloseTime: string | null;
+  latestDailyOpenTime: string | null;
+  latestDailyCloseTime: string | null;
+}
 
 export async function runHourlyCycle(env: Env): Promise<void> {
   const runtime = createRuntimeConfig(env);
@@ -48,13 +68,23 @@ export async function runHourlyCycle(env: Env): Promise<void> {
 
   for (const userState of userStates) {
     const trackedAssets = parseTrackedAssets(userState.user.trackedAssets);
+    const marketSnapshotResults = await fetchHourlyMarketSnapshots(
+      runtime.upbitBaseUrl ?? undefined,
+    );
     for (const asset of SUPPORTED_ASSETS) {
       if (!trackedAssets.includes(asset)) {
         continue;
       }
 
-      const market = getMarketForAsset(asset);
-      await processAssetCycle(runtime, telegramClient, userState, asset, market);
+      const market = SUPPORTED_MARKETS_BY_ASSET[asset];
+      await processAssetCycle(
+        runtime,
+        telegramClient,
+        userState,
+        asset,
+        market,
+        marketSnapshotResults[asset],
+      );
     }
   }
 }
@@ -65,12 +95,20 @@ async function processAssetCycle(
   userState: UserStateBundle,
   asset: SupportedAsset,
   market: SupportedMarket,
+  marketResultInput?:
+    | Awaited<ReturnType<typeof getMarketSnapshotResult>>
+    | null,
 ): Promise<DecisionLogRecord | null> {
-  const marketResult = await getMarketSnapshotResult(env.upbitBaseUrl ?? undefined, market);
+  const marketResult =
+    marketResultInput ?? await getMarketSnapshotResult(env.upbitBaseUrl ?? undefined, market);
   const marketSnapshot = marketResult.ok ? marketResult.snapshot : null;
   const context = buildDecisionContext({
     userState,
     asset,
+    marketSnapshot,
+  });
+  const marketTiming = buildMarketTimingDetails({
+    decisionGeneratedAt: context.generatedAt,
     marketSnapshot,
   });
   const baseDecision = runDecisionEngine(context);
@@ -143,6 +181,7 @@ async function processAssetCycle(
     actionable: decision.actionable,
     contextJson: JSON.stringify({
       context,
+      marketTiming,
       diagnostics: buildHourlyDiagnostics({
         context,
         baseDecision,
@@ -524,6 +563,47 @@ function isWithinSuppressionWindow(cooldownUntilIso: string, nowIso: string): bo
   }
 
   return now < cooldownUntil;
+}
+
+function buildMarketTimingDetails(input: {
+  decisionGeneratedAt: string;
+  marketSnapshot: MarketSnapshot | null;
+}): MarketTimingDetails {
+  const latestHourly = input.marketSnapshot?.timeframes["1h"].candles.at(-1) ?? null;
+  const latestFourHour = input.marketSnapshot?.timeframes["4h"].candles.at(-1) ?? null;
+  const latestDaily = input.marketSnapshot?.timeframes["1d"].candles.at(-1) ?? null;
+
+  return {
+    decisionGeneratedAt: input.decisionGeneratedAt,
+    snapshotFetchedAt: input.marketSnapshot?.fetchedAt ?? null,
+    tickerFetchedAt: input.marketSnapshot?.ticker.fetchedAt ?? null,
+    tickerTradeTimeUtc: input.marketSnapshot?.ticker.tradeTimeUtc ?? null,
+    tickerTradeTimeKst: input.marketSnapshot?.ticker.tradeTimeKst ?? null,
+    tickerExchangeTimestampMs: input.marketSnapshot?.ticker.exchangeTimestampMs ?? null,
+    latestHourlyOpenTime: latestHourly?.openTime ?? null,
+    latestHourlyCloseTime: latestHourly?.closeTime ?? null,
+    latestFourHourOpenTime: latestFourHour?.openTime ?? null,
+    latestFourHourCloseTime: latestFourHour?.closeTime ?? null,
+    latestDailyOpenTime: latestDaily?.openTime ?? null,
+    latestDailyCloseTime: latestDaily?.closeTime ?? null,
+  };
+}
+
+async function fetchHourlyMarketSnapshots(
+  baseUrl: string | undefined,
+): Promise<Record<SupportedAsset, Awaited<ReturnType<typeof getMarketSnapshotResult>>>> {
+  const entries = await Promise.all(
+    SUPPORTED_ASSETS.map(async (asset) => {
+      const market = getMarketForAsset(asset);
+      const result = await getMarketSnapshotResult(baseUrl, market);
+      return [asset, result] as const;
+    }),
+  );
+
+  return Object.fromEntries(entries) as Record<
+    SupportedAsset,
+    Awaited<ReturnType<typeof getMarketSnapshotResult>>
+  >;
 }
 
 function isMarketFailureDecisionLog(log: {

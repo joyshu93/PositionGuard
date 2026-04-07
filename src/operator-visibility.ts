@@ -54,7 +54,7 @@ export function buildLastDecisionView(
     asset: decision.asset,
     status: decision.decisionStatus,
     summary: decision.summary,
-    generatedAt: decision.createdAt,
+    generatedAt: getDecisionGeneratedAt(decision),
     alertOutcome,
     suppressionReason,
     regime:
@@ -85,7 +85,7 @@ export function buildHourlyHealthView(input: {
 
   return {
     latestDecisionStatus: latestDecision?.decisionStatus ?? null,
-    latestDecisionAt: latestDecision?.createdAt ?? null,
+    latestDecisionAt: latestDecision ? getDecisionGeneratedAt(latestDecision) : null,
     recentMarketFailureCount: marketFailureLogs.length,
     recentCooldownSkipCount: countSuppression(input.notifications, "cooldown"),
     recentSleepSuppressionCount: countSuppression(input.notifications, "sleep_mode"),
@@ -299,6 +299,34 @@ function getDiagnostics(
       invalidationState?: unknown;
     };
   };
+}
+
+function getDecisionGeneratedAt(decision: DecisionLogRecord): string {
+  const generatedAt = getContextGeneratedAt(decision.context);
+  return generatedAt ?? decision.createdAt;
+}
+
+function getContextGeneratedAt(context: unknown): string | null {
+  if (!context || typeof context !== "object") {
+    return null;
+  }
+
+  const contextEnvelope = context as {
+    context?: { generatedAt?: unknown };
+    marketTiming?: { decisionGeneratedAt?: unknown };
+  };
+
+  const generatedAtFromContext = contextEnvelope.context?.generatedAt;
+  if (typeof generatedAtFromContext === "string") {
+    return generatedAtFromContext;
+  }
+
+  const generatedAtFromTiming = contextEnvelope.marketTiming?.decisionGeneratedAt;
+  if (typeof generatedAtFromTiming === "string") {
+    return generatedAtFromTiming;
+  }
+
+  return null;
 }
 
 function getLatestMarketFailureMessage(

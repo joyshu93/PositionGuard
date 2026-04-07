@@ -21,6 +21,9 @@ const cooldownDecision: DecisionLogRecord = {
   actionable: true,
   notificationEmitted: false,
   context: {
+    context: {
+      generatedAt: "2026-01-01T02:59:00.000Z",
+    },
     diagnostics: {
       marketData: {
         ok: true,
@@ -165,6 +168,11 @@ assertEqual(
   lastDecisionView?.regime ?? null,
   "PULLBACK_IN_UPTREND",
   "Last decision view should expose the latest regime.",
+);
+assertEqual(
+  lastDecisionView?.generatedAt ?? null,
+  "2026-01-01T02:59:00.000Z",
+  "Last decision view should prefer the persisted decision generation time.",
 );
 assert(
   renderLastDecisionMessage(lastDecisionView).includes("Verdict: action needed") &&

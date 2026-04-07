@@ -367,6 +367,13 @@ The current MVP engine uses those candles and public ticker data for explicit, i
 
 These indicators are calculated inside the repository without an external TA library. They are used as explainable confirmation inputs, not as a single opaque score. Price structure, range location, support/resistance, and invalidation remain primary, while EMA / ATR / RSI / MACD / volume ratio are secondary confirmation inputs.
 
+Current timing semantics for hourly market snapshots are now explicit:
+
+- each tracked asset still fetches fresh public Upbit ticker plus `1h` / `4h` / `1d` candles at hourly run time
+- the persisted market snapshot now keeps both snapshot fetch time and ticker exchange trade time metadata
+- candle `closeTime` is derived from timeframe duration instead of mirroring candle `openTime`
+- decision-log context now stores market-timing details so `/lastdecision` can prefer the actual decision generation time over the row insertion time
+
 The current decision flow is:
 
 1. classify the higher-timeframe market regime

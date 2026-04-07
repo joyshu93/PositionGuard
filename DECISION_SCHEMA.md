@@ -60,8 +60,10 @@ The future decision engine should receive a context object with these categories
 ### Market Context
 - symbol: `KRW-BTC` or `KRW-ETH`
 - latest trade price
+- ticker exchange trade time basis
 - timeframe snapshots for `1h`, `4h`, `1d`
 - normalized candles sufficient for future structure analysis
+- explicit candle open / close time semantics
 - fetch timestamp
 
 ### Active Rule Inputs

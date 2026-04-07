@@ -66,6 +66,8 @@ export interface NormalizedCandle {
   sourceUnitMinutes: number;
   openedAtUtc: string;
   openedAtKst: string;
+  closedAtUtc: string;
+  closedAtKst: string;
   open: number;
   high: number;
   low: number;
@@ -175,6 +177,8 @@ export function normalizeUpbitMinuteCandle(
     volume: input.candle_acc_trade_volume,
     value: input.candle_acc_trade_price,
     timestamp: typeof input.timestamp === "number" ? input.timestamp : null,
+    closedAtUtc: addMinutesIso(input.candle_date_time_utc, expected.sourceUnitMinutes),
+    closedAtKst: addMinutesIso(input.candle_date_time_kst, expected.sourceUnitMinutes),
   };
 }
 
@@ -197,6 +201,8 @@ export function normalizeUpbitDayCandle(input: UpbitDayCandleResponse): Normaliz
     volume: input.candle_acc_trade_volume,
     value: input.candle_acc_trade_price,
     timestamp: typeof input.timestamp === "number" ? input.timestamp : null,
+    closedAtUtc: addMinutesIso(input.candle_date_time_utc, timeframeConfig["1d"].sourceUnitMinutes),
+    closedAtKst: addMinutesIso(input.candle_date_time_kst, timeframeConfig["1d"].sourceUnitMinutes),
   };
 }
 
@@ -309,6 +315,7 @@ export async function getMarketSnapshotResult(
   market: SupportedMarket,
 ): Promise<MarketSnapshotResult> {
   const client = new UpbitClient(baseUrl ? { baseUrl } : {});
+  const fetchedAt = new Date().toISOString();
 
   try {
     const [ticker, hourly, fourHour, daily] = await Promise.all([
@@ -340,7 +347,10 @@ export async function getMarketSnapshotResult(
           market,
           tradePrice: ticker.tradePrice,
           changeRate: ticker.changeRate ?? 0,
-          fetchedAt: new Date().toISOString(),
+          tradeTimeKst: ticker.tradeDateTimeKst,
+          tradeTimeUtc: ticker.tradeDateTimeUtc,
+          exchangeTimestampMs: ticker.timestamp,
+          fetchedAt,
         },
         timeframes: {
           "1h": {
@@ -356,6 +366,7 @@ export async function getMarketSnapshotResult(
             candles: daily.candles.map(mapNormalizedCandle),
           },
         },
+        fetchedAt,
       },
     };
   } catch (error) {
@@ -381,7 +392,7 @@ function mapNormalizedCandle(
     market: candle.market,
     timeframe: candle.timeframe,
     openTime: candle.openedAtUtc,
-    closeTime: candle.openedAtUtc,
+    closeTime: candle.closedAtUtc,
     openPrice: candle.open,
     highPrice: candle.high,
     lowPrice: candle.low,
@@ -389,4 +400,13 @@ function mapNormalizedCandle(
     volume: candle.volume,
     quoteVolume: candle.value,
   };
+}
+
+function addMinutesIso(value: string, minutes: number): string {
+  const parsed = Date.parse(`${value}Z`);
+  if (!Number.isFinite(parsed)) {
+    return value;
+  }
+
+  return new Date(parsed + minutes * 60_000).toISOString().slice(0, 19);
 }
