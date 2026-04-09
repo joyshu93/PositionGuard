@@ -10,6 +10,7 @@ At this stage, the repository may implement:
 - placeholder readiness checks
 - conservative rule-based coaching summaries and reasons
 - simple market-structure summaries for `1h`, `4h`, and `1d`
+- transparent, PaperTrade-style structure scoring and path selection for market interpretation
 - a temporary `ACTION_NEEDED` alert contract for explicit operational cases only
 - persistence for decision logs
 
@@ -84,6 +85,16 @@ The current conservative engine actively uses:
 
 Indicators must remain inspectable and rule-based. They are confirmation inputs only, not a hidden scoring system.
 
+The current parity-oriented judgment core also derives transparent structural summaries from those inputs:
+
+- `entryPath`
+- `trendAlignmentScore`
+- `recoveryQualityScore`
+- `breakdownPressureScore`
+- `weakeningStage`
+
+These summaries should remain explainable and deterministic, even when they are used to threshold entry, add-buy, or reduce review decisions.
+
 ## Decision Output Shape
 The decision engine output should remain machine-friendly and easy to replace.
 
@@ -109,6 +120,13 @@ Optional structured coaching fields:
   - `chaseGuardText`
   - `actionText`
   - `cautionText`
+
+Optional structure-analysis fields may also be attached to diagnostics when useful for operator visibility:
+- `entryPath`
+- `trendAlignmentScore`
+- `recoveryQualityScore`
+- `breakdownPressureScore`
+- `weakeningStage`
 
 Allowed MVP statuses:
 - `SETUP_INCOMPLETE`
@@ -154,6 +172,12 @@ The current engine may attach structured diagnostics with these sections:
     - `resistance`
     - `swingLow`
     - `swingHigh`
+- `structure`
+  - `entryPath`: `PULLBACK` | `RECLAIM` | `BREAKOUT_HOLD` | `NONE`
+  - `trendAlignmentScore`
+  - `recoveryQualityScore`
+  - `breakdownPressureScore`
+  - `weakeningStage`: `NONE` | `SOFT` | `CLEAR` | `FAILURE`
 
 ## Narrative Contract
 Decision summaries and reasons should read like conservative coaching, not execution guidance.
@@ -161,6 +185,7 @@ Decision summaries and reasons should read like conservative coaching, not execu
 - `summary` should give a short, explicit coaching takeaway.
 - `reasons` should explain regime, setup, trigger, invalidation, or risk in plain language.
 - `executionGuide` may provide explicit record-only coaching detail about where to act, how much to stage, what invalidates the idea, and whether chasing is forbidden.
+- explicit evidence scores may be used internally, but they should stay transparent and inspectable rather than predictive or discretionary.
 - `ACTION_NEEDED` should stay narrow and only cover manual correction, contradictory state, repeated operational failure, or clear invalidation/risk escalation.
 - The rule-based engine may use `ACTION_NEEDED` directly for risk review when structure weakens materially, while the temporary alert policy remains available for setup and operational failures.
 - The rule-based engine may also use `ACTION_NEEDED` for conservative `entry review` or `add-buy review` coaching when structure is constructive and the setup is not chasing price.
@@ -220,6 +245,7 @@ Each decision log currently captures:
   - base decision status versus final decision status
   - notification eligibility, sent/skipped outcome, suppression reason, cooldown key, and cooldown window
   - reminder repeated-signal count, unchanged-state evaluation, eligibility, sent/skipped outcome, suppression reason, and cooldown window
+  - structural evidence summaries such as entry path, trend alignment, recovery quality, breakdown pressure, and weakening stage when present
 
 The current MVP engine may summarize:
 - market regime on `1h` / `4h` / `1d`

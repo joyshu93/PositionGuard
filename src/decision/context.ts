@@ -1,16 +1,19 @@
-import type {
+﻿import type {
   DecisionContext,
   MarketSnapshot,
   PositionState,
+  StrategyInputs,
   SupportedAsset,
   UserStateBundle,
 } from "../domain/types.js";
 import { assessReadiness, isTrackedAsset } from "../readiness.js";
+import { buildDefaultStrategyInputs } from "./settings.js";
 
 export interface BuildDecisionContextParams {
   userState: UserStateBundle;
   asset: SupportedAsset;
   marketSnapshot: MarketSnapshot | null;
+  strategy?: StrategyInputs;
   generatedAt?: string;
 }
 
@@ -47,6 +50,34 @@ export function buildDecisionContext(
     accountState,
     positionState,
     marketSnapshot: params.marketSnapshot,
+    strategy:
+      params.strategy
+      ?? buildFallbackStrategyInputs(positionState, accountState, params.marketSnapshot),
     generatedAt,
+  };
+}
+
+function buildFallbackStrategyInputs(
+  positionState: PositionState | null,
+  accountState: UserStateBundle["accountState"],
+  marketSnapshot: MarketSnapshot | null,
+): StrategyInputs {
+  const base = buildDefaultStrategyInputs();
+  const availableCash = Math.max(0, accountState?.availableCash ?? 0);
+  const assetMarketValue =
+    positionState && marketSnapshot
+      ? Math.max(0, positionState.quantity) * Math.max(0, marketSnapshot.ticker.tradePrice)
+      : 0;
+  const totalEquity = availableCash + assetMarketValue;
+
+  return {
+    ...base,
+    portfolio: {
+      totalEquity,
+      assetMarketValue,
+      totalExposureValue: assetMarketValue,
+      assetExposureRatio: totalEquity > 0 ? assetMarketValue / totalEquity : 0,
+      totalExposureRatio: totalEquity > 0 ? assetMarketValue / totalEquity : 0,
+    },
   };
 }

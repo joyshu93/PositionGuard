@@ -1,6 +1,12 @@
 import type {
   DecisionContext,
   DecisionResult,
+  DecisionExecutionDisposition,
+  EntryPath,
+  SignalQualityBucket,
+  StrategyAction,
+  StrategyExposureGuardrails,
+  WeakeningStage,
 } from "./domain/types.js";
 
 export type HourlyCycleOutcome =
@@ -77,6 +83,27 @@ export interface HourlyDiagnostics {
       macdHistogram1d: number | null;
     };
   };
+  strategy: {
+    action: StrategyAction | null;
+    executionDisposition: DecisionExecutionDisposition | null;
+    entryPath: EntryPath | null;
+    score: number | null;
+    bucket: SignalQualityBucket | null;
+    confirmationRequired: boolean | null;
+    confirmationSatisfied: boolean | null;
+    reentryPenaltyApplied: boolean | null;
+    bullishScore: number | null;
+    weaknessScore: number | null;
+    trendAlignmentScore: number | null;
+    recoveryQualityScore: number | null;
+    breakdownPressureScore: number | null;
+    weakeningStage: WeakeningStage | null;
+    referencePrice: number | null;
+    latestDecisionAction: StrategyAction | null;
+    latestDecisionDisposition: DecisionExecutionDisposition | null;
+    recentExitHoursSince: number | null;
+    exposureGuardrails: StrategyExposureGuardrails | null;
+  };
 }
 
 export function buildHourlyDiagnostics(input: {
@@ -129,6 +156,37 @@ export function buildHourlyDiagnostics(input: {
         macdHistogram1d: input.finalDecision.diagnostics?.indicators.timeframes["1d"].macdHistogram ?? null,
       },
     },
+    strategy: extractStrategyDiagnostics(input.context, input.finalDecision.diagnostics?.strategy ?? null),
+  };
+}
+
+function extractStrategyDiagnostics(
+  context: DecisionContext,
+  diagnostics: unknown,
+): HourlyDiagnostics["strategy"] {
+  const value = toRecord(diagnostics);
+  const latestDecision = context.strategy?.latestDecision ?? null;
+  const recentExitHoursSince = context.strategy?.recentExit?.hoursSinceExit ?? null;
+  return {
+    action: asStrategyAction(value?.action) ?? latestDecision?.action ?? null,
+    executionDisposition: asExecutionDisposition(value?.executionDisposition) ?? latestDecision?.executionDisposition ?? null,
+    entryPath: asEntryPath(value?.entryPath) ?? latestDecision?.entryPath ?? null,
+    score: asNumber(value?.signalQuality && toRecord(value.signalQuality)?.score) ?? null,
+    bucket: asSignalQualityBucket(value?.signalQuality && toRecord(value.signalQuality)?.bucket) ?? latestDecision?.qualityBucket ?? null,
+    confirmationRequired: asBoolean(value?.signalQuality && toRecord(value.signalQuality)?.confirmationRequired),
+    confirmationSatisfied: asBoolean(value?.signalQuality && toRecord(value.signalQuality)?.confirmationSatisfied),
+    reentryPenaltyApplied: asBoolean(value?.signalQuality && toRecord(value.signalQuality)?.reentryPenaltyApplied),
+    bullishScore: asNumber(value?.bullishScore),
+    weaknessScore: asNumber(value?.weaknessScore),
+    trendAlignmentScore: asNumber(value?.trendAlignmentScore),
+    recoveryQualityScore: asNumber(value?.recoveryQualityScore),
+    breakdownPressureScore: asNumber(value?.breakdownPressureScore),
+    weakeningStage: asWeakeningStage(value?.weakeningStage),
+    referencePrice: asNumber(value?.referencePrice),
+    latestDecisionAction: latestDecision?.action ?? null,
+    latestDecisionDisposition: latestDecision?.executionDisposition ?? null,
+    recentExitHoursSince,
+    exposureGuardrails: toExposureGuardrails(value?.exposureGuardrails),
   };
 }
 
@@ -141,4 +199,58 @@ function getHourlyCycleOutcome(decision: DecisionResult, notificationState: Hour
   if (notificationState.suppressedBy === "sleep_mode") return "ACTION_NEEDED_SLEEP_SUPPRESSED";
   if (notificationState.suppressedBy === "missing_chat_id") return "ACTION_NEEDED_MISSING_CHAT_ID";
   return "ACTION_NEEDED_SUPPRESSED";
+}
+
+function toRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+function asStrategyAction(value: unknown): StrategyAction | null {
+  return value === "HOLD" || value === "ENTRY" || value === "ADD" || value === "REDUCE" || value === "EXIT" ? value : null;
+}
+
+function asExecutionDisposition(value: unknown): DecisionExecutionDisposition | null {
+  return value === "IMMEDIATE" || value === "DEFERRED_CONFIRMATION" || value === "EXECUTED_AFTER_CONFIRMATION" || value === "SKIPPED" ? value : null;
+}
+
+function asEntryPath(value: unknown): EntryPath | null {
+  return value === "PULLBACK" || value === "RECLAIM" || value === "BREAKOUT_HOLD" || value === "NONE" ? value : null;
+}
+
+function asSignalQualityBucket(value: unknown): SignalQualityBucket | null {
+  return value === "LOW" || value === "BORDERLINE" || value === "MEDIUM" || value === "HIGH" ? value : null;
+}
+
+function asWeakeningStage(value: unknown): WeakeningStage | null {
+  return value === "NONE" || value === "SOFT" || value === "CLEAR" || value === "FAILURE" ? value : null;
+}
+
+function asNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function asBoolean(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
+function toExposureGuardrails(value: unknown): StrategyExposureGuardrails | null {
+  const record = toRecord(value);
+  if (!record) {
+    return null;
+  }
+
+  const perAssetMaxAllocation = asNumber(record.perAssetMaxAllocation);
+  const totalPortfolioMaxExposure = asNumber(record.totalPortfolioMaxExposure);
+  const remainingAssetCapacity = asNumber(record.remainingAssetCapacity);
+  const remainingPortfolioCapacity = asNumber(record.remainingPortfolioCapacity);
+  if (perAssetMaxAllocation === null || totalPortfolioMaxExposure === null || remainingAssetCapacity === null || remainingPortfolioCapacity === null) {
+    return null;
+  }
+
+  return {
+    perAssetMaxAllocation,
+    totalPortfolioMaxExposure,
+    remainingAssetCapacity,
+    remainingPortfolioCapacity,
+  };
 }

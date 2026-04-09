@@ -7,11 +7,8 @@ import type {
   SupportedMarket,
   UserStateBundle,
 } from "./domain/types.js";
-import {
-  applyTemporaryAlertPolicy,
-  buildDecisionContext,
-  runDecisionEngine,
-} from "./decision/index.js";
+import { applyTemporaryAlertPolicy, buildDecisionContext, runDecisionEngine } from "./decision/index.js";
+import { buildStrategyInputsFromState } from "./decision/strategy-core.js";
 import {
   assessStateUpdateReminder,
   buildActionNeededAlertPlan,
@@ -21,18 +18,11 @@ import {
 import { buildHourlyDiagnostics } from "./hourly-diagnostics.js";
 export { buildHourlyDiagnostics } from "./hourly-diagnostics.js";
 import { getMarketForAsset, getMarketSnapshotResult } from "./upbit.js";
-import {
-  getLatestDecisionLogSummary,
-  listRecentDecisionLogSummaries,
-  listUsersForHourlyRun,
-  recordNotificationEvent,
-  recordDecisionLog,
-} from "./db/repositories.js";
-import {
-  getLatestNotificationEventForUserAssetReason,
-} from "./db/notification-events.js";
+import { listRecentDecisionRecordsForUser, listUsersForHourlyRun, recordNotificationEvent, recordDecisionLog } from "./db/repositories.js";
+import { getLatestNotificationEventForUserAssetReason } from "./db/notification-events.js";
 import { createTelegramBotClient } from "./telegram/client.js";
 import { parseTrackedAssets } from "./readiness.js";
+import type { DecisionLogRecord as StoredDecisionLogRecord } from "./types/persistence.js";
 
 const SUPPORTED_ASSETS: SupportedAsset[] = ["BTC", "ETH"];
 const DECISION_LOG_COOLDOWN_MS = 50 * 60 * 1000;
@@ -68,9 +58,9 @@ export async function runHourlyCycle(env: Env): Promise<void> {
 
   for (const userState of userStates) {
     const trackedAssets = parseTrackedAssets(userState.user.trackedAssets);
-    const marketSnapshotResults = await fetchHourlyMarketSnapshots(
-      runtime.upbitBaseUrl ?? undefined,
-    );
+    const marketSnapshotResults = await fetchHourlyMarketSnapshots(runtime.upbitBaseUrl ?? undefined);
+    const recentDecisionRecords = await listRecentDecisionRecordsForUser(runtime.db, userState.user.id, 12);
+
     for (const asset of SUPPORTED_ASSETS) {
       if (!trackedAssets.includes(asset)) {
         continue;
@@ -84,6 +74,8 @@ export async function runHourlyCycle(env: Env): Promise<void> {
         asset,
         market,
         marketSnapshotResults[asset],
+        marketSnapshotResults,
+        recentDecisionRecords,
       );
     }
   }
@@ -98,35 +90,39 @@ async function processAssetCycle(
   marketResultInput?:
     | Awaited<ReturnType<typeof getMarketSnapshotResult>>
     | null,
+  marketSnapshotResults?: Record<SupportedAsset, Awaited<ReturnType<typeof getMarketSnapshotResult>>>,
+  recentDecisionRecords: StoredDecisionLogRecord[] = [],
 ): Promise<DecisionLogRecord | null> {
   const marketResult =
     marketResultInput ?? await getMarketSnapshotResult(env.upbitBaseUrl ?? undefined, market);
   const marketSnapshot = marketResult.ok ? marketResult.snapshot : null;
+  const generatedAt = new Date().toISOString();
+  const recentAssetDecisionRecords = recentDecisionRecords.filter((record) => record.asset === asset);
+  const strategy = buildStrategyInputsFromState({
+    userState,
+    asset,
+    marketSnapshots: {
+      BTC: marketSnapshotResults?.BTC?.ok ? marketSnapshotResults.BTC.snapshot : null,
+      ETH: marketSnapshotResults?.ETH?.ok ? marketSnapshotResults.ETH.snapshot : null,
+    },
+    recentDecisionLogs: recentAssetDecisionRecords,
+    generatedAt,
+  });
   const context = buildDecisionContext({
     userState,
     asset,
     marketSnapshot,
+    strategy,
+    generatedAt,
   });
   const marketTiming = buildMarketTimingDetails({
     decisionGeneratedAt: context.generatedAt,
     marketSnapshot,
   });
   const baseDecision = runDecisionEngine(context);
-  const previousDecision = await getLatestDecisionLogSummary(
-    env.db,
-    userState.user.id,
-    asset,
-  );
-  const recentDecisionLogs = await listRecentDecisionLogSummaries(
-    env.db,
-    userState.user.id,
-    asset,
-    6,
-  );
-  const consecutiveMarketFailures = getConsecutiveMarketFailureCount(
-    marketResult,
-    recentDecisionLogs,
-  );
+  const previousDecision = recentAssetDecisionRecords[0] ?? null;
+  const recentDecisionLogs = recentAssetDecisionRecords.slice(0, 6);
+  const consecutiveMarketFailures = getConsecutiveMarketFailureCount(marketResult, recentDecisionLogs);
   const decision = applyTemporaryAlertPolicy({
     context,
     baseDecision,
@@ -181,6 +177,7 @@ async function processAssetCycle(
     actionable: decision.actionable,
     contextJson: JSON.stringify({
       context,
+      strategySnapshot: buildStrategySnapshot(decision, context.generatedAt),
       marketTiming,
       diagnostics: buildHourlyDiagnostics({
         context,
@@ -195,6 +192,34 @@ async function processAssetCycle(
     }),
     notificationSent: notificationState.sent || reminderState.sent,
   });
+}
+
+function buildStrategySnapshot(
+  decision: Pick<DecisionResult, "diagnostics">,
+  generatedAt: string,
+): {
+  action: string;
+  executionDisposition: string;
+  referencePrice: number;
+  signalQuality: unknown;
+  entryPath: string;
+  qualityBucket: string;
+  createdAt: string;
+} | null {
+  const strategy = decision.diagnostics?.strategy;
+  if (!strategy) {
+    return null;
+  }
+
+  return {
+    action: strategy.action,
+    executionDisposition: strategy.executionDisposition,
+    referencePrice: strategy.referencePrice,
+    signalQuality: strategy.signalQuality,
+    entryPath: strategy.entryPath,
+    qualityBucket: strategy.signalQuality.bucket,
+    createdAt: generatedAt,
+  };
 }
 
 async function evaluateNotificationState(params: {
@@ -630,3 +655,9 @@ function isMarketFailureDecisionLog(log: {
 
   return (marketData as { ok?: unknown }).ok === false;
 }
+
+
+
+
+
+

@@ -320,9 +320,9 @@ export async function getMarketSnapshotResult(
   try {
     const [ticker, hourly, fourHour, daily] = await Promise.all([
       client.getTicker(market),
-      client.getCandleSeries(market, "1h", { count: 24 }),
-      client.getCandleSeries(market, "4h", { count: 24 }),
-      client.getCandleSeries(market, "1d", { count: 30 }),
+      client.getCandleSeries(market, "1h", { count: 200 }),
+      client.getCandleSeries(market, "4h", { count: 200 }),
+      client.getCandleSeries(market, "1d", { count: 200 }),
     ]);
 
     if (

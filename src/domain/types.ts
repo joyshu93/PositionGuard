@@ -98,6 +98,7 @@ export interface DecisionContext {
   accountState: AccountState | null;
   positionState: PositionState | null;
   marketSnapshot: MarketSnapshot | null;
+  strategy: StrategyInputs;
   generatedAt: string;
 }
 
@@ -132,6 +133,20 @@ export type DecisionRiskLevel = "LOW" | "MODERATE" | "ELEVATED" | "HIGH";
 
 export type InvalidationState = "CLEAR" | "UNCLEAR" | "BROKEN";
 
+export type EntryPath = "PULLBACK" | "RECLAIM" | "BREAKOUT_HOLD" | "NONE";
+
+export type WeakeningStage = "NONE" | "SOFT" | "CLEAR" | "FAILURE";
+
+export type SignalQualityBucket = "HIGH" | "MEDIUM" | "BORDERLINE" | "LOW";
+
+export type StrategyAction = "HOLD" | "ENTRY" | "ADD" | "REDUCE" | "EXIT";
+
+export type DecisionExecutionDisposition =
+  | "IMMEDIATE"
+  | "DEFERRED_CONFIRMATION"
+  | "EXECUTED_AFTER_CONFIRMATION"
+  | "SKIPPED";
+
 export type ActionNeededReason =
   | "COMPLETE_SETUP"
   | "INVALID_RECORDED_STATE"
@@ -146,6 +161,61 @@ export interface ActionNeededAlert {
   reason: ActionNeededReason;
   cooldownKey: string;
   message: string;
+}
+
+export interface StrategySignalQuality {
+  score: number;
+  bucket: SignalQualityBucket;
+  confirmationRequired: boolean;
+  confirmationSatisfied: boolean;
+  reentryPenaltyApplied: boolean;
+}
+
+export interface StrategyExposureGuardrails {
+  perAssetMaxAllocation: number;
+  totalPortfolioMaxExposure: number;
+  remainingAssetCapacity: number;
+  remainingPortfolioCapacity: number;
+}
+
+export interface StrategySettings {
+  minimumTradeValueKrw: number;
+  entryAllocation: number;
+  addAllocation: number;
+  reduceFraction: number;
+  perAssetMaxAllocation: number;
+  totalPortfolioMaxExposure: number;
+}
+
+export interface StrategyPortfolioSnapshot {
+  totalEquity: number;
+  assetMarketValue: number;
+  totalExposureValue: number;
+  assetExposureRatio: number;
+  totalExposureRatio: number;
+}
+
+export interface StrategyLatestDecision {
+  action: StrategyAction;
+  executionDisposition: DecisionExecutionDisposition;
+  referencePrice: number;
+  signalQuality: StrategySignalQuality;
+  entryPath: EntryPath;
+  qualityBucket: SignalQualityBucket;
+  createdAt: string;
+}
+
+export interface StrategyRecentExit {
+  createdAt: string | null;
+  hoursSinceExit: number | null;
+  realizedPnl: number | null;
+}
+
+export interface StrategyInputs {
+  portfolio: StrategyPortfolioSnapshot;
+  latestDecision: StrategyLatestDecision | null;
+  recentExit: StrategyRecentExit;
+  settings: StrategySettings;
 }
 
 export type ExecutionPlanType =
@@ -219,6 +289,27 @@ export interface DecisionDiagnostics {
     price: number | null;
     timeframes: Record<SupportedTimeframe, DecisionDiagnosticsTimeframeSnapshot>;
   };
+  strategy?: {
+    action: StrategyAction;
+    executionDisposition: DecisionExecutionDisposition;
+    signalQuality: StrategySignalQuality;
+    exposureGuardrails: StrategyExposureGuardrails;
+    entryPath: EntryPath;
+    trendAlignmentScore: number;
+    recoveryQualityScore: number;
+    breakdownPressureScore: number;
+    weakeningStage: WeakeningStage;
+    referencePrice: number;
+    bullishScore?: number;
+    weaknessScore?: number;
+    confirmationRequired?: boolean;
+    confirmationSatisfied?: boolean;
+    reentryPenaltyApplied?: boolean;
+    latestDecisionAction?: StrategyAction | null;
+    latestDecisionDisposition?: DecisionExecutionDisposition | null;
+    recentExitHoursSince?: number | null;
+    portfolio?: StrategyPortfolioSnapshot | null;
+  } | null;
 }
 
 export interface DecisionResult {

@@ -315,7 +315,7 @@ This remains a manual record system. It does not sync balances or execute orders
 - Onboarding is intentionally lightweight; inline buttons guide setup, but cash and position values are still entered with commands
 - `/lastalert`, `/lastdecision`, and `/hourlyhealth` are user-scoped inspection tools, not a global admin console
 
-Decision outputs are structured as coaching summaries and reasons, and the current engine stays conservative and record-only. It now evaluates public BTC/ETH spot structure through a staged `regime -> setup -> trigger -> risk -> coaching wording` flow. It still prefers `SETUP_INCOMPLETE` / `INSUFFICIENT_DATA` / `NO_ACTION` when information is missing or structure is quiet, and keeps `ACTION_NEEDED` narrow for explicit manual correction, repeated market-data failure, or a clear coaching review need. When a setup is actionable, the engine may also attach a structured `executionGuide` with record-only coaching detail such as entry/add/reduce zone, staged size guidance, invalidation level, and chase guard.
+Decision outputs are structured as coaching summaries and reasons, and the current engine stays conservative and record-only. The judgment core now mirrors the PaperTrade-style interpretation flow: completed-candle market structure analysis, explicit entry-path and evidence scoring, thresholded confirmation, and invalidation-first weakening checks. It still prefers `SETUP_INCOMPLETE` / `INSUFFICIENT_DATA` / `NO_ACTION` when information is missing or structure is quiet, and keeps `ACTION_NEEDED` narrow for explicit manual correction, repeated market-data failure, or a clear coaching review need. When a setup is actionable, the engine may also attach a structured `executionGuide` with record-only coaching detail such as entry/add/reduce zone, staged size guidance, invalidation level, and chase guard.
 
 Current coaching behavior is intentionally narrow and rule-based:
 
@@ -365,7 +365,7 @@ The current MVP engine uses those candles and public ticker data for explicit, i
 - MACD `(12, 26, 9)` with histogram improvement or deterioration checks
 - recorded cash, quantity, and average entry price
 
-These indicators are calculated inside the repository without an external TA library. They are used as explainable confirmation inputs, not as a single opaque score. Price structure, range location, support/resistance, and invalidation remain primary, while EMA / ATR / RSI / MACD / volume ratio are secondary confirmation inputs.
+These indicators are calculated inside the repository without an external TA library. They are used as explainable confirmation inputs, not as a single opaque score. Price structure, range location, support/resistance, and invalidation remain primary, while EMA / ATR / RSI / MACD / volume ratio are secondary confirmation inputs. The judgment layer also derives transparent structure summaries such as entry path, alignment score, recovery quality, breakdown pressure, and weakening stage from those same inspectable inputs.
 
 Current timing semantics for hourly market snapshots are now explicit:
 
@@ -377,7 +377,7 @@ Current timing semantics for hourly market snapshots are now explicit:
 The current decision flow is:
 
 1. classify the higher-timeframe market regime
-2. decide whether an entry / add-buy / reduce setup is even allowed
+2. derive the constructive path and evidence strength for entry / add-buy / reduce
 3. confirm or reject the lower-timeframe trigger
 4. evaluate invalidation and risk
 5. produce conservative coaching wording and alert policy output
@@ -388,6 +388,7 @@ Recent conservative refinements in that flow:
 - breakdown and invalidation lean on timeframe closes and ATR-buffered support failure rather than a single live-price wick
 - intermediate recovery regimes such as `EARLY_RECOVERY` and `RECLAIM_ATTEMPT` sit between outright bull trend and weak downtrend
 - reduce-side confirmation now prefers confirmed structure damage plus supporting weakness instead of reacting to a single RSI or MACD wobble
+- repeated-signal memory is preserved through the reminder layer so repeated review signals can be distinguished from unchanged manual state
 
 Current operator visibility remains concise but now includes the latest regime, trigger state, invalidation state, and reminder evaluation in `/hourlyhealth`. `/lastalert` remains a compact record of the most recent sent alert, including state-update reminders when they were sent.
 

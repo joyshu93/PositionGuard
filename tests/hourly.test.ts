@@ -4,6 +4,13 @@ import {
   shouldRecordSuppressedNotification,
   shouldSkipDecisionLog,
 } from "../src/hourly.js";
+import { buildDecisionContext } from "../src/decision/context.js";
+import {
+  assessStateUpdateReminder,
+  buildManualStateSnapshot,
+  buildStateUpdateReminderPlan,
+} from "../src/runtime-alerts.js";
+import type { UserStateBundle } from "../src/domain/types.js";
 import { assertEqual } from "./test-helpers.js";
 
 assertEqual(
@@ -262,4 +269,127 @@ assertEqual(
   }).reminderState.repeatedSignalCount,
   2,
   "Hourly diagnostics should expose repeated-signal reminder state without conflicting with market notification diagnostics.",
+);
+
+const reminderUserState: UserStateBundle = {
+  user: {
+    id: 1,
+    telegramUserId: "123",
+    telegramChatId: "456",
+    username: "tester",
+    displayName: "Test User",
+    trackedAssets: "BTC",
+    sleepModeEnabled: false,
+    onboardingComplete: true,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  },
+  accountState: {
+    id: 10,
+    userId: 1,
+    availableCash: 1000000,
+    reportedAt: "2026-01-01T01:00:00.000Z",
+    source: "USER_REPORTED",
+    createdAt: "2026-01-01T01:00:00.000Z",
+    updatedAt: "2026-01-01T01:00:00.000Z",
+  },
+  positions: {
+    BTC: {
+      id: 20,
+      userId: 1,
+      asset: "BTC",
+      quantity: 0.25,
+      averageEntryPrice: 150,
+      reportedAt: "2026-01-01T01:00:00.000Z",
+      createdAt: "2026-01-01T01:00:00.000Z",
+      updatedAt: "2026-01-01T01:00:00.000Z",
+    },
+  },
+};
+
+const reminderContext = buildDecisionContext({
+  userState: reminderUserState,
+  asset: "BTC",
+  marketSnapshot: null,
+  generatedAt: "2026-01-01T02:00:00.000Z",
+});
+
+const reminderAssessment = assessStateUpdateReminder({
+  decision: {
+    status: "ACTION_NEEDED",
+    summary: "BTC structure supports a conservative spot entry review.",
+    reasons: ["Constructive structure remains intact."],
+    alert: {
+      reason: "ENTRY_REVIEW_REQUIRED",
+      cooldownKey: "entry-review:1:BTC:balanced-range",
+      message: "Action needed",
+    },
+  },
+  context: reminderContext,
+  asset: "BTC",
+  recentDecisionLogs: [
+    {
+      decisionStatus: "ACTION_NEEDED",
+      context: {
+        context: {
+          accountState: reminderContext.accountState,
+          positionState: reminderContext.positionState,
+        },
+        diagnostics: {
+          alertReason: "ENTRY_REVIEW_REQUIRED",
+        },
+      },
+    },
+  ],
+});
+
+assertEqual(
+  reminderAssessment.repeatedSignalCount,
+  2,
+  "Reminder assessment should count the current signal plus the immediately prior matching signal.",
+);
+assertEqual(
+  reminderAssessment.stateChangedSinceLastSignal,
+  false,
+  "Reminder assessment should detect unchanged manual state across repeated signals.",
+);
+assertEqual(
+  reminderAssessment.reminderEligible,
+  true,
+  "Reminder assessment should mark repeated unchanged signals as eligible for a state-update reminder.",
+);
+assertEqual(
+  reminderAssessment.reasonKey,
+  "state-update-reminder-1-btc-entry-review-required",
+  "Reminder assessment should produce a stable reminder reason key.",
+);
+
+const reminderPlan = buildStateUpdateReminderPlan({
+  assessment: reminderAssessment,
+  asset: "BTC",
+  locale: "en",
+  nowIso: "2026-01-01T02:00:00.000Z",
+  hasChatId: true,
+  sleepModeEnabled: false,
+  primaryAlertSent: false,
+  latestReminderNotification: null,
+});
+
+assertEqual(
+  reminderPlan.shouldSend,
+  true,
+  "Eligible repeated signals should produce a sendable reminder plan when delivery is allowed.",
+);
+assertEqual(
+  reminderPlan.suppressionReason,
+  null,
+  "Sendable reminder plans should not carry a suppression reason.",
+);
+assertEqual(
+  buildManualStateSnapshot({
+    accountState: reminderContext.accountState,
+    positionState: reminderContext.positionState,
+  }).quantity,
+  0.25,
+  "Manual-state snapshots should preserve the stored position quantity used by reminder memory.",
 );

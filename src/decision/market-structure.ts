@@ -2,11 +2,13 @@ import type {
   DecisionDiagnosticsTimeframeSnapshot,
   DecisionRiskLevel,
   DecisionTriggerState,
+  EntryPath,
   InvalidationState,
   MarketCandle,
   MarketRegime,
   MarketSnapshot,
   SupportedTimeframe,
+  WeakeningStage,
 } from "../domain/types.js";
 
 export type TrendDirection = "UP" | "DOWN" | "FLAT";
@@ -78,6 +80,11 @@ export interface MarketStructureAnalysis {
   rsiRecovery: boolean;
   bearishMomentumExpansion: boolean;
   atrShock: boolean;
+  entryPath: EntryPath;
+  trendAlignmentScore: number;
+  recoveryQualityScore: number;
+  breakdownPressureScore: number;
+  weakeningStage: WeakeningStage;
 }
 
 export interface PositionStructureAnalysis extends MarketStructureAnalysis {
@@ -92,9 +99,9 @@ const SWING_LOOKBACK: Record<SupportedTimeframe, number> = { "1h": 18, "4h": 18,
 export function analyzeMarketStructure(snapshot: MarketSnapshot): MarketStructureAnalysis {
   const currentPrice = snapshot.ticker.tradePrice;
   const timeframes = {
-    "1h": analyzeTimeframe("1h", snapshot.timeframes["1h"].candles, currentPrice),
-    "4h": analyzeTimeframe("4h", snapshot.timeframes["4h"].candles, currentPrice),
-    "1d": analyzeTimeframe("1d", snapshot.timeframes["1d"].candles, currentPrice),
+    "1h": analyzeTimeframe("1h", getDecisionCandles(snapshot, "1h"), currentPrice),
+    "4h": analyzeTimeframe("4h", getDecisionCandles(snapshot, "4h"), currentPrice),
+    "1d": analyzeTimeframe("1d", getDecisionCandles(snapshot, "1d"), currentPrice),
   };
   const structures = Object.values(timeframes);
   const reclaimLevel = getReclaimLevel(timeframes["1h"], timeframes["4h"]);
@@ -113,12 +120,34 @@ export function analyzeMarketStructure(snapshot: MarketSnapshot): MarketStructur
       || (timeframes["1h"].location === "LOWER" && timeframes["4h"].trend !== "DOWN")
     );
   const upperRangeChase = isUpperRangeChase(timeframes, currentPrice, reclaimStructure || breakoutHoldStructure);
-  const volumeRecovery = (timeframes["1h"].indicators.volumeRatio ?? 0) >= 0.8
-    || (timeframes["4h"].indicators.volumeRatio ?? 0) >= 0.88;
+  const volumeRecovery = isConstructiveVolumeRecovery(timeframes["1h"], timeframes["4h"]);
   const macdImproving = timeframes["1h"].macdHistogramImproving || timeframes["4h"].macdHistogramImproving;
   const rsiRecovery = isRsiRecovery(timeframes["1h"]) || isRsiRecovery(timeframes["4h"]);
   const bearishMomentumExpansion = isBearishMomentumExpansion(timeframes);
   const atrShock = isAtrShock(timeframes["1h"]) || isAtrShock(timeframes["4h"]);
+  const entryPath = getEntryPath({
+    pullbackZone,
+    reclaimStructure,
+    breakoutHoldStructure,
+  });
+  const trendAlignmentScore = getTrendAlignmentScore(timeframes);
+  const recoveryQualityScore = getRecoveryQualityScore({
+    timeframes,
+    pullbackZone,
+    reclaimStructure,
+    breakoutHoldStructure,
+    volumeRecovery,
+    macdImproving,
+    rsiRecovery,
+  });
+  const breakdownPressureScore = getBreakdownPressureScore({
+    timeframes,
+    breakdown4h,
+    breakdown1d,
+    failedReclaim,
+    bearishMomentumExpansion,
+    atrShock,
+  });
   const regime = classifyRegime(timeframes, {
     breakdown4h,
     breakdown1d,
@@ -134,6 +163,10 @@ export function analyzeMarketStructure(snapshot: MarketSnapshot): MarketStructur
     : isInvalidationBroken(timeframes, invalidationLevel)
       ? "BROKEN"
       : "CLEAR";
+  const resolvedWeakeningStage = getWeakeningStage(
+    breakdownPressureScore,
+    breakdown1d || invalidationState === "BROKEN",
+  );
   const riskLevel = breakdown1d || regime === "BREAKDOWN_RISK"
     ? "HIGH"
     : breakdown4h || failedReclaim || atrShock || bearishMomentumExpansion
@@ -169,6 +202,11 @@ export function analyzeMarketStructure(snapshot: MarketSnapshot): MarketStructur
     rsiRecovery,
     bearishMomentumExpansion,
     atrShock,
+    entryPath,
+    trendAlignmentScore,
+    recoveryQualityScore,
+    breakdownPressureScore,
+    weakeningStage: resolvedWeakeningStage,
   };
 }
 
@@ -276,6 +314,43 @@ function analyzeTimeframe(
     rsiOverbought: rsi14 !== null ? rsi14 >= 70 : false,
     rsiOversold: rsi14 !== null ? rsi14 <= 35 : false,
   };
+}
+
+function getDecisionCandles(
+  snapshot: MarketSnapshot,
+  timeframe: SupportedTimeframe,
+): MarketCandle[] {
+  const candles = snapshot.timeframes[timeframe].candles;
+  const cutoffMs = getSnapshotDecisionCutoffMs(snapshot);
+  if (cutoffMs === null) {
+    return candles;
+  }
+
+  const completed = candles.filter((candle) => {
+    const closeMs = toUtcMs(candle.closeTime);
+    return closeMs !== null && closeMs <= cutoffMs;
+  });
+
+  return completed.length >= Math.min(LOOKBACK[timeframe], 5) ? completed : candles;
+}
+
+function getSnapshotDecisionCutoffMs(snapshot: MarketSnapshot): number | null {
+  if (typeof snapshot.ticker.exchangeTimestampMs === "number" && Number.isFinite(snapshot.ticker.exchangeTimestampMs)) {
+    return snapshot.ticker.exchangeTimestampMs;
+  }
+
+  const tradeTimeMs = snapshot.ticker.tradeTimeUtc ? toUtcMs(snapshot.ticker.tradeTimeUtc) : null;
+  if (tradeTimeMs !== null) {
+    return tradeTimeMs;
+  }
+
+  return snapshot.fetchedAt ? toUtcMs(snapshot.fetchedAt) : null;
+}
+
+function toUtcMs(value: string): number | null {
+  const normalized = /(?:Z|[+-]\d{2}:\d{2})$/.test(value) ? value : `${value}Z`;
+  const timestamp = Date.parse(normalized);
+  return Number.isNaN(timestamp) ? null : timestamp;
 }
 
 function classifyTrend(
@@ -386,6 +461,104 @@ function describeRegime(regime: MarketRegime): string {
     default:
       return "Higher timeframe support is failing and breakdown risk is elevated.";
   }
+}
+
+function getEntryPath(input: {
+  pullbackZone: boolean;
+  reclaimStructure: boolean;
+  breakoutHoldStructure: boolean;
+}): EntryPath {
+  if (input.reclaimStructure) {
+    return "RECLAIM";
+  }
+  if (input.breakoutHoldStructure) {
+    return "BREAKOUT_HOLD";
+  }
+  if (input.pullbackZone) {
+    return "PULLBACK";
+  }
+  return "NONE";
+}
+
+function getTrendAlignmentScore(
+  timeframes: Record<SupportedTimeframe, TimeframeStructure>,
+): number {
+  let score = 0;
+
+  if (timeframes["1d"].emaStackBullish) score += 2;
+  else if (timeframes["1d"].trend === "UP" || timeframes["1d"].aboveEma20) score += 1;
+
+  if (timeframes["4h"].emaStackBullish) score += 2;
+  else if (timeframes["4h"].trend === "UP" || timeframes["4h"].aboveEma20) score += 1;
+
+  if (timeframes["1h"].trend === "UP") score += 1;
+
+  return score;
+}
+
+function getRecoveryQualityScore(input: {
+  timeframes: Record<SupportedTimeframe, TimeframeStructure>;
+  pullbackZone: boolean;
+  reclaimStructure: boolean;
+  breakoutHoldStructure: boolean;
+  volumeRecovery: boolean;
+  macdImproving: boolean;
+  rsiRecovery: boolean;
+}): number {
+  let score = 0;
+
+  if (input.reclaimStructure) score += 2;
+  if (input.breakoutHoldStructure) score += 2;
+  if (
+    input.pullbackZone
+    && (
+      input.timeframes["1h"].location === "LOWER"
+      || input.timeframes["4h"].location === "LOWER"
+    )
+  ) {
+    score += 1;
+  }
+  if (input.volumeRecovery) score += 1;
+  if (input.macdImproving) score += 1;
+  if (input.rsiRecovery) score += 1;
+
+  return score;
+}
+
+function getBreakdownPressureScore(input: {
+  timeframes: Record<SupportedTimeframe, TimeframeStructure>;
+  breakdown4h: boolean;
+  breakdown1d: boolean;
+  failedReclaim: boolean;
+  bearishMomentumExpansion: boolean;
+  atrShock: boolean;
+}): number {
+  let score = 0;
+
+  if (input.breakdown1d) score += 3;
+  if (input.breakdown4h) score += 2;
+  if (input.failedReclaim) score += 2;
+  if (input.bearishMomentumExpansion) score += 1;
+  if (input.atrShock) score += 1;
+  if (input.timeframes["1d"].trend === "DOWN") score += 1;
+
+  return score;
+}
+
+function getWeakeningStage(
+  breakdownPressureScore: number,
+  invalidationFailed: boolean,
+): WeakeningStage {
+  if (invalidationFailed) {
+    return "FAILURE";
+  }
+  if (breakdownPressureScore >= 4) {
+    return "CLEAR";
+  }
+  if (breakdownPressureScore >= 2) {
+    return "SOFT";
+  }
+  return "NONE";
 }
 
 function getInvalidationLevel(timeframes: Record<SupportedTimeframe, TimeframeStructure>): number | null {
@@ -677,6 +850,23 @@ function isBreakoutHold(oneHour: TimeframeStructure, fourHour: TimeframeStructur
 function isRsiRecovery(structure: TimeframeStructure): boolean {
   const rsi = structure.indicators.rsi14;
   return rsi !== null && rsi >= 40 && rsi <= 64 && structure.macdHistogramImproving;
+}
+
+function isConstructiveVolumeRecovery(
+  oneHour: TimeframeStructure,
+  fourHour: TimeframeStructure,
+): boolean {
+  const oneHourRatio = oneHour.indicators.volumeRatio ?? 0;
+  const fourHourRatio = fourHour.indicators.volumeRatio ?? 0;
+
+  return (
+    oneHourRatio >= 1.05
+    && oneHour.latestClose >= oneHour.previousClose
+  ) || (
+    fourHourRatio >= 1
+    && fourHour.latestClose >= fourHour.previousClose
+    && fourHour.aboveEma20
+  );
 }
 
 function isBearishMomentumExpansion(timeframes: Record<SupportedTimeframe, TimeframeStructure>): boolean {
