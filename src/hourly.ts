@@ -8,6 +8,10 @@ import type {
   UserStateBundle,
 } from "./domain/types.js";
 import { applyTemporaryAlertPolicy, buildDecisionContext, runDecisionEngine } from "./decision/index.js";
+import {
+  filterRecordsOnOrAfterStrategyReset,
+  takeLatestRecordOnOrAfterStrategyReset,
+} from "./decision/strategy-memory.js";
 import { buildStrategyInputsFromState } from "./decision/strategy-core.js";
 import {
   assessStateUpdateReminder,
@@ -18,7 +22,14 @@ import {
 import { buildHourlyDiagnostics } from "./hourly-diagnostics.js";
 export { buildHourlyDiagnostics } from "./hourly-diagnostics.js";
 import { getMarketForAsset, getMarketSnapshotResult } from "./upbit.js";
-import { listRecentDecisionRecordsForUser, listUsersForHourlyRun, recordNotificationEvent, recordDecisionLog } from "./db/repositories.js";
+import {
+  getLatestManualExitForUserAsset,
+  getLatestStrategyMemoryResetForUserAsset,
+  listRecentDecisionRecordsForUser,
+  listUsersForHourlyRun,
+  recordNotificationEvent,
+  recordDecisionLog,
+} from "./db/repositories.js";
 import { getLatestNotificationEventForUserAssetReason } from "./db/notification-events.js";
 import { createTelegramBotClient } from "./telegram/client.js";
 import { parseTrackedAssets } from "./readiness.js";
@@ -97,7 +108,20 @@ async function processAssetCycle(
     marketResultInput ?? await getMarketSnapshotResult(env.upbitBaseUrl ?? undefined, market);
   const marketSnapshot = marketResult.ok ? marketResult.snapshot : null;
   const generatedAt = new Date().toISOString();
-  const recentAssetDecisionRecords = recentDecisionRecords.filter((record) => record.asset === asset);
+  const strategyMemoryReset = await getLatestStrategyMemoryResetForUserAsset(
+    env.db,
+    userState.user.id,
+    asset,
+  );
+  const strategyResetAt = strategyMemoryReset?.createdAt ?? null;
+  const recentAssetDecisionRecords = filterRecordsOnOrAfterStrategyReset(
+    recentDecisionRecords.filter((record) => record.asset === asset),
+    strategyResetAt,
+  );
+  const latestManualExit = takeLatestRecordOnOrAfterStrategyReset(
+    await getLatestManualExitForUserAsset(env.db, userState.user.id, asset),
+    strategyResetAt,
+  );
   const strategy = buildStrategyInputsFromState({
     userState,
     asset,
@@ -106,6 +130,7 @@ async function processAssetCycle(
       ETH: marketSnapshotResults?.ETH?.ok ? marketSnapshotResults.ETH.snapshot : null,
     },
     recentDecisionLogs: recentAssetDecisionRecords,
+    latestManualExit,
     generatedAt,
   });
   const context = buildDecisionContext({
@@ -154,6 +179,7 @@ async function processAssetCycle(
     market,
     decision,
     marketResult,
+    resetAt: strategyResetAt,
   });
   const reminderState = await evaluateReminderState({
     db: env.db,
@@ -165,6 +191,7 @@ async function processAssetCycle(
     decision,
     recentDecisionLogs,
     primaryNotificationState: notificationState,
+    resetAt: strategyResetAt,
   });
 
   return recordDecisionLog(env.db, {
@@ -237,6 +264,7 @@ async function evaluateNotificationState(params: {
   marketResult:
     | { ok: true }
     | { ok: false; reason: string; message: string };
+  resetAt: string | null;
 }): Promise<{
   sent: boolean;
   reasonKey: string | null;
@@ -263,6 +291,9 @@ async function evaluateNotificationState(params: {
     alertAsset,
     reasonKey,
   );
+  const latestStrategyEvent = alertAsset === null
+    ? latestEvent
+    : takeLatestRecordOnOrAfterStrategyReset(latestEvent, params.resetAt);
 
   const nowIso = new Date().toISOString();
   const plan = buildActionNeededAlertPlan({
@@ -273,16 +304,16 @@ async function evaluateNotificationState(params: {
     nowIso,
     hasChatId: params.userState.user.telegramChatId !== null,
     sleepModeEnabled: params.userState.user.sleepModeEnabled,
-    latestNotification: latestEvent
+    latestNotification: latestStrategyEvent
       ? {
-          createdAt: latestEvent.createdAt,
-          reasonKey: latestEvent.reasonKey,
+          createdAt: latestStrategyEvent.createdAt,
+          reasonKey: latestStrategyEvent.reasonKey,
         }
       : null,
   });
 
   if (!plan.shouldSend) {
-    if (shouldRecordSuppressedNotification(latestEvent, nowIso)) {
+    if (shouldRecordSuppressedNotification(latestStrategyEvent, nowIso)) {
       await recordNotificationEvent(params.db, {
         userId: params.userState.user.id,
         asset: alertAsset,
@@ -376,6 +407,7 @@ async function evaluateReminderState(params: {
     suppressedBy: string | null;
     cooldownUntil: string | null;
   };
+  resetAt: string | null;
 }): Promise<{
   eligible: boolean;
   sent: boolean;
@@ -402,6 +434,10 @@ async function evaluateReminderState(params: {
           params.asset,
           assessment.reasonKey,
         );
+  const latestReminderNotification = takeLatestRecordOnOrAfterStrategyReset(
+    latestReminderEvent,
+    params.resetAt,
+  );
 
   const plan = buildStateUpdateReminderPlan({
     assessment,
@@ -411,10 +447,10 @@ async function evaluateReminderState(params: {
     hasChatId: params.userState.user.telegramChatId !== null,
     sleepModeEnabled: params.userState.user.sleepModeEnabled,
     primaryAlertSent: params.primaryNotificationState.sent,
-    latestReminderNotification: latestReminderEvent
+    latestReminderNotification: latestReminderNotification
       ? {
-          createdAt: latestReminderEvent.createdAt,
-          reasonKey: latestReminderEvent.reasonKey,
+          createdAt: latestReminderNotification.createdAt,
+          reasonKey: latestReminderNotification.reasonKey,
         }
       : null,
   });
@@ -433,7 +469,7 @@ async function evaluateReminderState(params: {
   }
 
   if (!plan.shouldSend) {
-    if (plan.eligible && shouldRecordSuppressedNotification(latestReminderEvent, new Date().toISOString())) {
+    if (plan.eligible && shouldRecordSuppressedNotification(latestReminderNotification, new Date().toISOString())) {
       await recordNotificationEvent(params.db, {
         userId: params.userState.user.id,
         asset: params.asset,

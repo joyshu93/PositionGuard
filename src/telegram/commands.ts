@@ -1,4 +1,5 @@
 import type { SupportedLocale } from "../domain/types.js";
+import type { StrategyMemoryResetScope } from "../types/persistence.js";
 import { formatAvailability, formatCompactTimestampForLocale, formatLocaleName, formatNumberForLocale, getMessages, resolveUserLocale } from "../i18n/index.js";
 import { formatValidationErrors, validatePositionInput } from "../validation.js";
 import { describeDecisionVerdict } from "../operator-visibility.js";
@@ -58,6 +59,8 @@ export function routeCommand(
         return handleHourlyHealth(context, deps, locale);
       case "lastalert":
         return handleLastAlert(context, deps, locale);
+      case "freshstart":
+        return handleFreshStart(context, deps, locale);
       case "sleep":
         return handleSleep(context, deps, locale);
       default:
@@ -276,6 +279,26 @@ async function handleSetPosition(
   ];
 }
 
+async function handleFreshStart(
+  context: TelegramCommandContext,
+  deps: TelegramRouterDependencies,
+  locale: SupportedLocale,
+): Promise<TelegramOutgoingAction[]> {
+  const scope = parseFreshStartScope(context.args[0]);
+  const confirmation = context.args[1]?.trim().toLowerCase();
+  const messages = getMessages(locale);
+
+  if (!scope || confirmation !== "confirm") {
+    return [send(context.chatId, messages.command.invalidFreshStartUsage, buildOnboardingKeyboard(locale))];
+  }
+
+  if (deps.stateStore?.resetStrategyMemory) {
+    await deps.stateStore.resetStrategyMemory(context.userId, scope);
+  }
+
+  return [send(context.chatId, messages.command.freshStartRecorded(scope), buildOnboardingKeyboard(locale))];
+}
+
 async function handleSleep(
   context: TelegramCommandContext,
   deps: TelegramRouterDependencies,
@@ -471,6 +494,15 @@ function parseTrackedAssetsSelection(value: string | undefined): TelegramTracked
   if (normalized === "BOTH" || normalized === "BTC,ETH") {
     return "BOTH";
   }
+  return null;
+}
+
+function parseFreshStartScope(value: string | undefined): StrategyMemoryResetScope | null {
+  const normalized = value?.trim().toUpperCase();
+  if (normalized === "BTC" || normalized === "ETH" || normalized === "ALL") {
+    return normalized;
+  }
+
   return null;
 }
 

@@ -389,12 +389,15 @@ const koreanConfirmedEntryDecision = runDecisionEngine(
 );
 
 assert(
-  koreanConfirmedEntryDecision.alert?.message.includes("행동 구간:")
+  koreanConfirmedEntryDecision.summary.includes("진입 검토")
+    && koreanConfirmedEntryDecision.alert?.message.includes("행동 구간:")
     && koreanConfirmedEntryDecision.alert?.message.includes("첫 분할:")
     && koreanConfirmedEntryDecision.alert?.message.includes("무효화:")
     && koreanConfirmedEntryDecision.alert?.message.includes("추격 금지:")
-    && !koreanConfirmedEntryDecision.alert?.message.includes("Action zone:"),
-  "Korean actionable messages should render localized execution guidance headings.",
+    && koreanConfirmedEntryDecision.alert?.message.includes("진입 무효화 기준")
+    && !koreanConfirmedEntryDecision.alert?.message.includes("entry review")
+    && !koreanConfirmedEntryDecision.alert?.message.includes("Wait for the structure"),
+  "Korean actionable messages should localize both the headline summary and execution-guide body.",
 );
 
 assert(

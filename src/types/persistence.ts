@@ -63,6 +63,50 @@ export interface PositionStateInput {
   reportedAt?: string;
 }
 
+export type PositionStateEventType = "ENTRY" | "ADD" | "REDUCE" | "EXIT";
+
+export interface PositionStateEventRecord {
+  id: number;
+  userId: number;
+  asset: AssetSymbol;
+  eventType: PositionStateEventType;
+  previousQuantity: number;
+  quantity: number;
+  previousAverageEntryPrice: number;
+  averageEntryPrice: number;
+  source: "user_reported";
+  reportedAt: string;
+  createdAt: string;
+}
+
+export interface PositionStateEventInput {
+  userId: number;
+  asset: AssetSymbol;
+  eventType: PositionStateEventType;
+  previousQuantity: number;
+  quantity: number;
+  previousAverageEntryPrice: number;
+  averageEntryPrice: number;
+  reportedAt?: string;
+}
+
+export type StrategyMemoryResetScope = AssetSymbol | "ALL";
+
+export interface StrategyMemoryResetRecord {
+  id: number;
+  userId: number;
+  scope: StrategyMemoryResetScope;
+  reason: string | null;
+  createdAt: string;
+}
+
+export interface StrategyMemoryResetInput {
+  userId: number;
+  scope: StrategyMemoryResetScope;
+  reason?: string | null;
+  createdAt?: string;
+}
+
 export type DecisionStatus =
   | "SETUP_INCOMPLETE"
   | "INSUFFICIENT_DATA"

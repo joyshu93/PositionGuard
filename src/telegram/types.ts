@@ -1,4 +1,5 @@
 import type { SupportedLocale } from "../domain/types.js";
+import type { StrategyMemoryResetScope } from "../types/persistence.js";
 
 export type TelegramChatType = 'private' | 'group' | 'supergroup' | 'channel';
 
@@ -94,6 +95,10 @@ export interface TelegramStateStore {
   }): Promise<void>;
   setSleepMode(telegramUserId: number, isSleeping: boolean): Promise<void>;
   setLocale?(telegramUserId: number, locale: SupportedLocale): Promise<SupportedLocale>;
+  resetStrategyMemory?(
+    telegramUserId: number,
+    scope: StrategyMemoryResetScope,
+  ): Promise<{ scope: StrategyMemoryResetScope; createdAt: string } | void>;
 }
 
 export interface TelegramStatusProvider {

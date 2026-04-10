@@ -5,12 +5,20 @@ import {
   shouldSkipDecisionLog,
 } from "../src/hourly.js";
 import { buildDecisionContext } from "../src/decision/context.js";
+import { buildStrategyInputsFromState } from "../src/decision/strategy-core.js";
+import { classifyPositionTransition } from "../src/db/position-state.js";
 import {
   assessStateUpdateReminder,
   buildManualStateSnapshot,
   buildStateUpdateReminderPlan,
 } from "../src/runtime-alerts.js";
+import {
+  filterAssetScopedRecordsOnOrAfterStrategyReset,
+  filterRecordsOnOrAfterStrategyReset,
+  takeLatestRecordOnOrAfterStrategyReset,
+} from "../src/decision/strategy-memory.js";
 import type { UserStateBundle } from "../src/domain/types.js";
+import type { DecisionLogRecord } from "../src/types/persistence.js";
 import { assertEqual } from "./test-helpers.js";
 
 assertEqual(
@@ -392,4 +400,174 @@ assertEqual(
   }).quantity,
   0.25,
   "Manual-state snapshots should preserve the stored position quantity used by reminder memory.",
+);
+
+assertEqual(
+  classifyPositionTransition(null, { quantity: 0 }),
+  null,
+  "Zero-to-zero manual records should not fabricate a position transition event.",
+);
+assertEqual(
+  classifyPositionTransition(null, { quantity: 0.1 }),
+  "ENTRY",
+  "Zero-to-positive manual records should be classified as a fresh entry.",
+);
+assertEqual(
+  classifyPositionTransition(
+    { quantity: 0.2 } as never,
+    { quantity: 0 },
+  ),
+  "EXIT",
+  "Positive-to-zero manual records should be classified as a full exit.",
+);
+assertEqual(
+  classifyPositionTransition(
+    { quantity: 0.2 } as never,
+    { quantity: 0.3 },
+  ),
+  "ADD",
+  "Growing manual inventory should be classified as an add.",
+);
+assertEqual(
+  classifyPositionTransition(
+    { quantity: 0.3 } as never,
+    { quantity: 0.1 },
+  ),
+  "REDUCE",
+  "Shrinking manual inventory without going flat should be classified as a reduce.",
+);
+
+const deferredStrategyLog: DecisionLogRecord = {
+  id: 50,
+  userId: 1,
+  asset: "BTC",
+  symbol: "KRW-BTC",
+  decisionStatus: "NO_ACTION",
+  summary: "BTC entry review is justified, but confirmation is deferred to the next hourly repeat.",
+  reasons: [],
+  actionable: false,
+  notificationEmitted: false,
+  context: {
+    strategySnapshot: {
+      action: "ENTRY",
+      executionDisposition: "DEFERRED_CONFIRMATION",
+      referencePrice: 150,
+      signalQuality: {
+        score: 6,
+        bucket: "MEDIUM",
+        confirmationRequired: true,
+        confirmationSatisfied: false,
+        reentryPenaltyApplied: false,
+      },
+      entryPath: "RECLAIM",
+      qualityBucket: "MEDIUM",
+      createdAt: "2026-01-01T01:00:00.000Z",
+    },
+  },
+  createdAt: "2026-01-01T01:00:00.000Z",
+};
+
+const strategyInputsWithoutManualExit = buildStrategyInputsFromState({
+  userState: {
+    ...reminderUserState,
+    positions: {
+      BTC: {
+        ...reminderUserState.positions.BTC!,
+        quantity: 0,
+        averageEntryPrice: 0,
+      },
+    },
+  },
+  asset: "BTC",
+  marketSnapshots: {
+    BTC: null,
+    ETH: null,
+  },
+  recentDecisionLogs: [deferredStrategyLog],
+  generatedAt: "2026-01-01T02:00:00.000Z",
+});
+
+assertEqual(
+  strategyInputsWithoutManualExit.latestDecision?.executionDisposition ?? null,
+  "DEFERRED_CONFIRMATION",
+  "Strategy inputs should still recover the latest deferred confirmation snapshot from the latest decision log.",
+);
+assertEqual(
+  strategyInputsWithoutManualExit.recentExit.createdAt,
+  null,
+  "Decision logs alone should no longer fabricate a recent-exit memory when no manual exit transition was recorded.",
+);
+
+const strategyInputsWithManualExit = buildStrategyInputsFromState({
+  userState: {
+    ...reminderUserState,
+    positions: {
+      BTC: {
+        ...reminderUserState.positions.BTC!,
+        quantity: 0,
+        averageEntryPrice: 0,
+      },
+    },
+  },
+  asset: "BTC",
+  marketSnapshots: {
+    BTC: null,
+    ETH: null,
+  },
+  recentDecisionLogs: [deferredStrategyLog],
+  latestManualExit: {
+    createdAt: "2026-01-01T01:30:00.000Z",
+  },
+  generatedAt: "2026-01-01T02:00:00.000Z",
+});
+
+assertEqual(
+  strategyInputsWithManualExit.recentExit.createdAt,
+  "2026-01-01T01:30:00.000Z",
+  "Explicit manual exit memory should become the source of truth for recent-exit timing.",
+);
+assertEqual(
+  strategyInputsWithManualExit.recentExit.hoursSinceExit,
+  0.5,
+  "Recent-exit timing should be computed from the recorded manual exit transition.",
+);
+
+assertEqual(
+  filterRecordsOnOrAfterStrategyReset(
+    [
+      { createdAt: "2026-01-01T00:00:00.000Z", value: 1 },
+      { createdAt: "2026-01-01T02:00:00.000Z", value: 2 },
+    ],
+    "2026-01-01T01:00:00.000Z",
+  ).length,
+  1,
+  "Strategy-memory reset filtering should drop records older than the reset marker.",
+);
+
+assertEqual(
+  takeLatestRecordOnOrAfterStrategyReset(
+    { createdAt: "2026-01-01T00:30:00.000Z", value: 1 },
+    "2026-01-01T01:00:00.000Z",
+  ),
+  null,
+  "Latest-record reset filtering should ignore stale memory older than the reset marker.",
+);
+
+const resetScopedNotifications = filterAssetScopedRecordsOnOrAfterStrategyReset(
+  [
+    { asset: "BTC" as const, createdAt: "2026-01-01T00:00:00.000Z", reasonKey: "btc-old" },
+    { asset: "BTC" as const, createdAt: "2026-01-01T02:00:00.000Z", reasonKey: "btc-new" },
+    { asset: "ETH" as const, createdAt: "2026-01-01T00:00:00.000Z", reasonKey: "eth-old" },
+    { asset: null, createdAt: "2026-01-01T00:00:00.000Z", reasonKey: "setup" },
+  ],
+  {
+    BTC: "2026-01-01T01:00:00.000Z",
+    ETH: null,
+  },
+);
+
+assertEqual(
+  resetScopedNotifications.length,
+  3,
+  "Asset-scoped reset filtering should only drop stale records for the reset asset while keeping global records.",
 );

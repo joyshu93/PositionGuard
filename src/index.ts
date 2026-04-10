@@ -12,9 +12,11 @@ import {
   getUserByTelegramUserId,
   ensureTelegramUser,
   getTelegramStatusSnapshot,
+  getLatestStrategyMemoryResetForUserAsset,
   getUserStateBundleByUserId,
   listRecentDecisionRecordsForUser,
   listRecentNotificationEventSummaries,
+  resetStrategyMemoryByTelegramUserId,
   setLocaleByTelegramUserId,
   setTrackedAssetsByTelegramUserId,
   setCashByTelegramUserId,
@@ -24,6 +26,10 @@ import {
 import { assessReadiness } from "./readiness.js";
 import { renderStatusMessage } from "./status.js";
 import type { TelegramActionNeededReason } from "./telegram.js";
+import {
+  filterAssetScopedRecordsOnOrAfterStrategyReset,
+  type StrategyMemoryResetMap,
+} from "./decision/strategy-memory.js";
 import {
   buildHourlyHealthView,
   buildLastDecisionView,
@@ -165,6 +171,18 @@ async function handleFetch(
             const user = await setLocaleByTelegramUserId(env.DB, String(telegramUserId), locale);
             return user.locale ?? locale;
           },
+          async resetStrategyMemory(telegramUserId, scope) {
+            const reset = await resetStrategyMemoryByTelegramUserId(
+              env.DB,
+              String(telegramUserId),
+              scope,
+              "telegram_freshstart",
+            );
+            return {
+              scope: reset.scope,
+              createdAt: reset.createdAt,
+            };
+          },
         },
         onboardingProvider: {
           async getOnboardingSnapshot(telegramUserId) {
@@ -248,7 +266,11 @@ async function handleFetch(
             //     : [],
             // };
 
-            const recentDecisions = await listRecentDecisionRecordsForUser(env.DB, user.id, 20);
+            const resetMap = await getStrategyMemoryResetMap(env.DB, user.id);
+            const recentDecisions = filterAssetScopedRecordsOnOrAfterStrategyReset(
+              await listRecentDecisionRecordsForUser(env.DB, user.id, 40),
+              resetMap,
+            );
 
             const latestByAsset = readiness.trackedAssets
               .map((asset) => {
@@ -285,10 +307,19 @@ async function handleFetch(
             }
 
             const readiness = assessReadiness(userState);
-            const [recentDecisions, recentNotifications] = await Promise.all([
-              listRecentDecisionRecordsForUser(env.DB, user.id, 8),
-              listRecentNotificationEventSummaries(env.DB, user.id, 8),
+            const [resetMap, recentDecisionsRaw, recentNotificationsRaw] = await Promise.all([
+              getStrategyMemoryResetMap(env.DB, user.id),
+              listRecentDecisionRecordsForUser(env.DB, user.id, 24),
+              listRecentNotificationEventSummaries(env.DB, user.id, 24),
             ]);
+            const recentDecisions = filterAssetScopedRecordsOnOrAfterStrategyReset(
+              recentDecisionsRaw,
+              resetMap,
+            );
+            const recentNotifications = filterAssetScopedRecordsOnOrAfterStrategyReset(
+              recentNotificationsRaw,
+              resetMap,
+            );
             const view = buildHourlyHealthView({
               decisions: recentDecisions,
               notifications: recentNotifications,
@@ -345,10 +376,14 @@ async function handleFetch(
               env.DB,
               statusSnapshot.user.id,
             );
-            const recentNotifications = await listRecentNotificationEventSummaries(
-              env.DB,
-              statusSnapshot.user.id,
-              3,
+            const resetMap = await getStrategyMemoryResetMap(env.DB, statusSnapshot.user.id);
+            const recentNotifications = filterAssetScopedRecordsOnOrAfterStrategyReset(
+              await listRecentNotificationEventSummaries(
+                env.DB,
+                statusSnapshot.user.id,
+                10,
+              ),
+              resetMap,
             );
 
             return renderStatusMessage(
@@ -374,10 +409,14 @@ async function handleFetch(
               return null;
             }
 
-            const recentNotifications = await listRecentNotificationEventSummaries(
-              env.DB,
-              statusSnapshot.user.id,
-              10,
+            const resetMap = await getStrategyMemoryResetMap(env.DB, statusSnapshot.user.id);
+            const recentNotifications = filterAssetScopedRecordsOnOrAfterStrategyReset(
+              await listRecentNotificationEventSummaries(
+                env.DB,
+                statusSnapshot.user.id,
+                20,
+              ),
+              resetMap,
             );
             const latestSentAlert = recentNotifications.find(
               (event) => event.deliveryStatus === "SENT",
@@ -407,7 +446,13 @@ async function handleFetch(
 
             return {
               reason,
-              summary,
+              summary:
+                payload &&
+                typeof (payload as { summary?: unknown }).summary === "string"
+                  ? summary
+                  : resolveUserLocale(statusSnapshot.user.locale ?? null) === "ko"
+                    ? "ACTION_NEEDED 알림이 전송되었습니다."
+                    : "ACTION_NEEDED alert sent.",
               asset: latestSentAlert.asset,
               sentAt: latestSentAlert.sentAt ?? latestSentAlert.createdAt,
               cooldownUntil: latestSentAlert.cooldownUntil,
@@ -419,6 +464,21 @@ async function handleFetch(
   }
 
   return jsonResponse({ ok: false, error: "Not found" }, 404);
+}
+
+async function getStrategyMemoryResetMap(
+  db: Env["DB"],
+  userId: number,
+): Promise<StrategyMemoryResetMap> {
+  const [btcReset, ethReset] = await Promise.all([
+    getLatestStrategyMemoryResetForUserAsset(db, userId, "BTC"),
+    getLatestStrategyMemoryResetForUserAsset(db, userId, "ETH"),
+  ]);
+
+  return {
+    BTC: btcReset?.createdAt ?? null,
+    ETH: ethReset?.createdAt ?? null,
+  };
 }
 
 function jsonResponse(body: unknown, status = 200): Response {

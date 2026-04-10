@@ -31,6 +31,13 @@ const deps = {
       calls.push({ kind: "setLocale", payload: { telegramUserId, locale } });
       return locale;
     },
+    async resetStrategyMemory(telegramUserId: number, scope: "BTC" | "ETH" | "ALL") {
+      calls.push({ kind: "resetStrategyMemory", payload: { telegramUserId, scope } });
+      return {
+        scope,
+        createdAt: "2026-01-01T04:00:00.000Z",
+      };
+    },
   },
 };
 
@@ -210,8 +217,9 @@ const helpKoActions = await routeCommand(
 assert(
   helpKoActions[0]?.kind === "sendMessage" &&
     helpKoActions[0].text.includes("/language <ko|en>") &&
+    helpKoActions[0].text.includes("/freshstart <BTC|ETH|ALL> confirm") &&
     helpKoActions[0].text.includes("\uBD07 \uC5B8\uC5B4 \uC120\uD0DD"),
-  "/help should render Korean help copy including /language.",
+  "/help should render Korean help copy including /language and /freshstart.",
 );
 
 const callbackStatusActions = await routeCommand(
@@ -401,6 +409,42 @@ assert(
 assert(
   calls.some((call) => call.kind === "setSleepMode" && (call.payload as { isSleeping?: boolean }).isSleeping === true),
   "sleep callback should still toggle sleep mode through the callback path.",
+);
+
+const invalidFreshStartActions = await routeCommand(
+  {
+    ...baseContext,
+    command: "freshstart",
+    text: "/freshstart BTC",
+    args: ["BTC"],
+  },
+  deps,
+);
+
+assert(
+  invalidFreshStartActions[0]?.kind === "sendMessage" &&
+    invalidFreshStartActions[0].text.includes("Usage: /freshstart <BTC|ETH|ALL> confirm"),
+  "/freshstart should require an explicit confirm token.",
+);
+
+const freshStartActions = await routeCommand(
+  {
+    ...baseContext,
+    command: "freshstart",
+    text: "/freshstart ETH confirm",
+    args: ["ETH", "confirm"],
+  },
+  deps,
+);
+
+assert(
+  calls.some((call) => call.kind === "resetStrategyMemory" && (call.payload as { scope?: string }).scope === "ETH"),
+  "/freshstart should persist a strategy-memory reset marker for the requested scope.",
+);
+assert(
+  freshStartActions[0]?.kind === "sendMessage" &&
+    freshStartActions[0].text.includes("Fresh-start marker recorded for ETH"),
+  "/freshstart should confirm that recent strategy memory was severed without deleting stored records.",
 );
 
 const alertActions = await routeCommand(

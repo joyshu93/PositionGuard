@@ -15,6 +15,8 @@ import type {
   DecisionLogLookup,
   PositionStateRecord,
   PositionStateInput,
+  StrategyMemoryResetRecord,
+  StrategyMemoryResetScope,
   UserRecord,
   UserStateSnapshot,
 } from "../types/persistence.js";
@@ -32,12 +34,17 @@ import {
   listRecentNotificationEventsForUser,
 } from "./notification-events.js";
 import {
+  createStrategyMemoryReset as persistStrategyMemoryReset,
+  getLatestStrategyMemoryResetForUserAsset as getLatestStrategyMemoryResetForUserAssetRecord,
+} from "./strategy-memory-resets.js";
+import {
   getHourlyHealthInspection,
   getLatestDecisionLogInspection,
   getLatestNotificationEventInspection,
   listRecentDecisionLogInspections,
   listRecentNotificationEventInspections,
 } from "./operator-visibility.js";
+import { getLatestPositionStateEventForUserAsset } from "./position-state-events.js";
 import {
   loadUserStateSnapshotByTelegramId,
   loadUserStateSnapshotByUserId,
@@ -260,6 +267,40 @@ export async function listRecentDecisionRecordsForUser(
   limit = 10,
 ) {
   return listDecisionLogsForUser(db, userId, limit);
+}
+
+export async function getLatestManualExitForUserAsset(
+  db: D1DatabaseLike,
+  userId: number,
+  asset: SupportedAsset,
+) {
+  return getLatestPositionStateEventForUserAsset(db, userId, asset, "EXIT");
+}
+
+export async function resetStrategyMemoryByTelegramUserId(
+  db: D1DatabaseLike,
+  telegramUserId: string,
+  scope: StrategyMemoryResetScope,
+  reason?: string | null,
+): Promise<StrategyMemoryResetRecord> {
+  const user = await getUserByTelegramId(db, telegramUserId);
+  if (!user) {
+    throw new Error("Cannot reset strategy memory for an unknown Telegram user");
+  }
+
+  return persistStrategyMemoryReset(db, {
+    userId: user.id,
+    scope,
+    reason: reason ?? null,
+  });
+}
+
+export async function getLatestStrategyMemoryResetForUserAsset(
+  db: D1DatabaseLike,
+  userId: number,
+  asset: SupportedAsset,
+): Promise<StrategyMemoryResetRecord | null> {
+  return getLatestStrategyMemoryResetForUserAssetRecord(db, userId, asset);
 }
 
 export async function listRecentDecisionLogSummaries(

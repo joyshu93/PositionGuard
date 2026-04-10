@@ -24,7 +24,11 @@ import type {
   UserStateBundle,
   WeakeningStage,
 } from "../domain/types.js";
-import type { DecisionLogRecord as StoredDecisionLogRecord } from "../types/persistence.js";
+import type {
+  DecisionLogRecord as StoredDecisionLogRecord,
+  PositionStateEventRecord,
+} from "../types/persistence.js";
+import { resolveUserLocale } from "../i18n/index.js";
 import { analyzePositionStructure, toDecisionSnapshot, type PositionStructureAnalysis } from "./market-structure.js";
 import { DEFAULT_STRATEGY_SETTINGS } from "./settings.js";
 
@@ -71,6 +75,7 @@ export interface BuildStrategyInputsParams {
   asset: SupportedAsset;
   marketSnapshots: Partial<Record<SupportedAsset, MarketSnapshot | null>>;
   recentDecisionLogs: StoredDecisionLogRecord[];
+  latestManualExit?: Pick<PositionStateEventRecord, "createdAt"> | null;
   generatedAt: string;
   settings?: StrategySettings;
 }
@@ -113,11 +118,7 @@ export function buildStrategyInputsFromState(input: BuildStrategyInputsParams): 
       totalExposureRatio: totalEquity > 0 ? totalExposureValue / totalEquity : 0,
     },
     latestDecision: extractLatestDecision(input.recentDecisionLogs),
-    recentExit: inferRecentExit({
-      currentPosition: input.userState.positions[input.asset] ?? null,
-      recentDecisionLogs: input.recentDecisionLogs,
-      generatedAt: input.generatedAt,
-    }),
+    recentExit: inferRecentExit(input.latestManualExit ?? null, input.generatedAt),
     settings: input.settings ?? DEFAULT_STRATEGY_SETTINGS,
   };
 }
@@ -258,6 +259,7 @@ function decideReduceOrHold(input: {
   exposureGuardrails: StrategyExposureGuardrails;
 }): StrategyDecisionCore | null {
   const { context, analysis, weaknessScore, bearishQuality, exposureGuardrails } = input;
+  const locale = resolveUserLocale(context.user.locale ?? null);
   const plan = getStructuredReducePlan(context, analysis, weaknessScore);
   if (!plan) {
     return null;
@@ -265,8 +267,12 @@ function decideReduceOrHold(input: {
 
   const action: StrategyAction = analysis.weakeningStage === "FAILURE" || analysis.breakdown1d || weaknessScore >= 7 ? "EXIT" : "REDUCE";
   const summary = action === "EXIT"
-    ? `${analysis.asset} structure is broken enough that a reduce/exit review is warranted.`
-    : `${analysis.asset} structure is weakening enough that a reduce review is warranted.`;
+    ? locale === "ko"
+      ? `${analysis.asset} 구조가 충분히 손상되어 축소 또는 청산 계획 검토가 필요합니다.`
+      : `${analysis.asset} structure is broken enough that a reduce/exit review is warranted.`
+    : locale === "ko"
+      ? `${analysis.asset} 구조가 약해지고 있어 축소 검토가 필요합니다.`
+      : `${analysis.asset} structure is weakening enough that a reduce review is warranted.`;
   const reasons = [
     `Regime is ${analysis.regime}.`,
     `Weakness score is ${weaknessScore}.`,
@@ -301,10 +307,11 @@ function buildBullishDecision(
   exposureGuardrails: StrategyExposureGuardrails,
   confirmationSatisfied: boolean,
 ): StrategyDecisionCore {
+  const locale = resolveUserLocale(context.user.locale ?? null);
   const thresholds = getBullishThresholds(action, analysis);
   const summary = action === "ENTRY"
-    ? buildEntrySummary(analysis, bullishScore, executionDisposition, confirmationSatisfied)
-    : buildAddSummary(analysis, bullishScore, executionDisposition, confirmationSatisfied);
+    ? buildEntrySummary(analysis, bullishScore, executionDisposition, confirmationSatisfied, locale)
+    : buildAddSummary(analysis, bullishScore, executionDisposition, confirmationSatisfied, locale);
   const reasons = [
     `Regime is ${analysis.regime}.`,
     `Bullish score is ${bullishScore} with ${qualityBucket.toLowerCase()} quality.`,
@@ -355,9 +362,14 @@ function buildHoldDecision(
   exposureGuardrails: StrategyExposureGuardrails,
   reasons: string[],
 ): StrategyDecisionCore {
+  const locale = resolveUserLocale(context.user.locale ?? null);
   const summary = context.positionState && context.positionState.quantity > 0
-    ? `${analysis.asset} structure is not weak enough for a reduce alert and not strong enough for a new alert.`
-    : `${analysis.asset} does not have a strong enough setup for an entry alert yet.`;
+    ? locale === "ko"
+      ? `${analysis.asset} 구조가 축소 검토를 낼 만큼 약하지도, 새 검토를 낼 만큼 강하지도 않습니다.`
+      : `${analysis.asset} structure is not weak enough for a reduce alert and not strong enough for a new alert.`
+    : locale === "ko"
+      ? `${analysis.asset}은 아직 진입 검토를 낼 만큼 강한 setup이 아닙니다.`
+      : `${analysis.asset} does not have a strong enough setup for an entry alert yet.`;
   const diagnostics = buildDiagnostics({
     context,
     analysis,
@@ -425,7 +437,12 @@ function buildStrategyDecisionCore(input: {
     reasons: input.reasons,
     signalQuality: input.signalQuality,
     exposureGuardrails: input.exposureGuardrails,
-    executionGuide: buildExecutionGuide(input.action, input.analysis, input.context.strategy.settings),
+    executionGuide: buildExecutionGuide(
+      input.action,
+      input.analysis,
+      input.context.strategy.settings,
+      resolveUserLocale(input.context.user.locale ?? null),
+    ),
     diagnostics,
   };
 }
@@ -434,6 +451,7 @@ function buildExecutionGuide(
   action: StrategyAction,
   analysis: PositionStructureAnalysis,
   settings: StrategySettings,
+  locale: "ko" | "en",
 ): ExecutionGuide | null {
   const zone = referenceZone(analysis);
   const invalidationLevel = analysis.invalidationLevel;
@@ -448,9 +466,23 @@ function buildExecutionGuide(
       maxTotalSizePctOfCash: Math.round(settings.perAssetMaxAllocation * 100),
       reducePctOfPosition: null,
       invalidationLevel,
-      invalidationRuleText: invalidationLevel === null ? "Entry invalidation is still unclear." : `Entry invalidation is below roughly ${price(invalidationLevel)} KRW.`,
-      chaseGuardText: analysis.upperRangeChase ? "Do not chase an extended move into the upper range." : "Wait for the structure to hold; do not overrun the entry zone.",
-      actionText: `Review a staged entry near ${formatZone(zone)}.`,
+      invalidationRuleText: invalidationLevel === null
+        ? locale === "ko"
+          ? "진입 무효화 기준이 아직 충분히 선명하지 않습니다."
+          : "Entry invalidation is still unclear."
+        : locale === "ko"
+          ? `진입 무효화 기준은 대략 ${price(invalidationLevel, locale)} KRW 아래입니다.`
+          : `Entry invalidation is below roughly ${price(invalidationLevel, locale)} KRW.`,
+      chaseGuardText: analysis.upperRangeChase
+        ? locale === "ko"
+          ? "상단 구간으로 과하게 확장된 움직임은 추격하지 마세요."
+          : "Do not chase an extended move into the upper range."
+        : locale === "ko"
+          ? "구조가 유지되는지 확인하고, 진입 구간을 과하게 넘겨 잡지 마세요."
+          : "Wait for the structure to hold; do not overrun the entry zone.",
+      actionText: locale === "ko"
+        ? `${formatZone(zone, locale)} 부근의 분할 진입을 검토하세요.`
+        : `Review a staged entry near ${formatZone(zone, locale)}.`,
       cautionText: null,
     };
   }
@@ -465,10 +497,24 @@ function buildExecutionGuide(
       maxTotalSizePctOfCash: Math.round(settings.perAssetMaxAllocation * 100),
       reducePctOfPosition: null,
       invalidationLevel,
-      invalidationRuleText: invalidationLevel === null ? "Add-buy invalidation is still unclear." : `Add-buy invalidation is below roughly ${price(invalidationLevel)} KRW.`,
-      chaseGuardText: "Only add on a controlled hold or retest; avoid oversizing into extension.",
-      actionText: `Review a staged add near ${formatZone(zone)}.`,
-      cautionText: analysis.pnlPct <= -0.06 ? "Recorded drawdown is already meaningful." : null,
+      invalidationRuleText: invalidationLevel === null
+        ? locale === "ko"
+          ? "추가매수 무효화 기준이 아직 충분히 선명하지 않습니다."
+          : "Add-buy invalidation is still unclear."
+        : locale === "ko"
+          ? `추가매수 무효화 기준은 대략 ${price(invalidationLevel, locale)} KRW 아래입니다.`
+          : `Add-buy invalidation is below roughly ${price(invalidationLevel, locale)} KRW.`,
+      chaseGuardText: locale === "ko"
+        ? "통제된 hold 또는 retest에서만 추가를 검토하고, 확장 구간에서는 과대 진입을 피하세요."
+        : "Only add on a controlled hold or retest; avoid oversizing into extension.",
+      actionText: locale === "ko"
+        ? `${formatZone(zone, locale)} 부근의 분할 추가를 검토하세요.`
+        : `Review a staged add near ${formatZone(zone, locale)}.`,
+      cautionText: analysis.pnlPct <= -0.06
+        ? locale === "ko"
+          ? "기록상 drawdown이 이미 의미 있게 커진 상태입니다."
+          : "Recorded drawdown is already meaningful."
+        : null,
     };
   }
 
@@ -482,10 +528,28 @@ function buildExecutionGuide(
       maxTotalSizePctOfCash: null,
       reducePctOfPosition: action === "EXIT" ? 100 : Math.round(settings.reduceFraction * 100),
       invalidationLevel,
-      invalidationRuleText: invalidationLevel === null ? "Reduce invalidation is still unclear." : `Risk remains elevated while price stays below roughly ${price(invalidationLevel)} KRW.`,
-      chaseGuardText: "Do not average down into weakness; review the sell-side response instead.",
-      actionText: action === "EXIT" ? `Review a stronger exit response around ${formatZone(zone)}.` : `Review trimming around ${formatZone(zone)}.`,
-      cautionText: analysis.weakeningStage === "SOFT" ? "Weakening is still soft, so keep the response modest." : null,
+      invalidationRuleText: invalidationLevel === null
+        ? locale === "ko"
+          ? "축소 무효화 기준이 아직 충분히 선명하지 않습니다."
+          : "Reduce invalidation is still unclear."
+        : locale === "ko"
+          ? `가격이 대략 ${price(invalidationLevel, locale)} KRW 아래에 머무는 동안 리스크는 계속 높습니다.`
+          : `Risk remains elevated while price stays below roughly ${price(invalidationLevel, locale)} KRW.`,
+      chaseGuardText: locale === "ko"
+        ? "약세 구간으로 물타기하지 말고, 대신 sell-side 대응을 검토하세요."
+        : "Do not average down into weakness; review the sell-side response instead.",
+      actionText: action === "EXIT"
+        ? locale === "ko"
+          ? `${formatZone(zone, locale)} 부근의 더 강한 exit response를 검토하세요.`
+          : `Review a stronger exit response around ${formatZone(zone, locale)}.`
+        : locale === "ko"
+          ? `${formatZone(zone, locale)} 부근의 일부 축소를 검토하세요.`
+          : `Review trimming around ${formatZone(zone, locale)}.`,
+      cautionText: analysis.weakeningStage === "SOFT"
+        ? locale === "ko"
+          ? "약화가 아직 soft 단계라서 대응 강도는 과하지 않게 유지하세요."
+          : "Weakening is still soft, so keep the response modest."
+        : null,
     };
   }
 
@@ -667,13 +731,37 @@ function getStructuredReducePlan(
   };
 }
 
-function buildEntrySummary(analysis: PositionStructureAnalysis, score: number, disposition: DecisionExecutionDisposition, confirmationSatisfied: boolean): string {
+function buildEntrySummary(
+  analysis: PositionStructureAnalysis,
+  score: number,
+  disposition: DecisionExecutionDisposition,
+  confirmationSatisfied: boolean,
+  locale: "ko" | "en",
+): string {
+  if (locale === "ko") {
+    if (disposition === "DEFERRED_CONFIRMATION") return `${analysis.asset} 진입 검토는 정당하지만, 확인은 다음 시간 반복까지 보류됩니다.`;
+    if (confirmationSatisfied) return `${analysis.asset} 진입 검토가 정당하며, 이전 확인 보류도 이제 충족되었습니다.`;
+    return `${analysis.asset} 진입 검토가 상승 점수 ${score} 기준으로 정당합니다.`;
+  }
+
   if (disposition === "DEFERRED_CONFIRMATION") return `${analysis.asset} entry review is justified, but confirmation is deferred to the next hourly repeat.`;
   if (confirmationSatisfied) return `${analysis.asset} entry review is justified and the deferred confirmation has now been satisfied.`;
   return `${analysis.asset} entry review is justified with bullish score ${score}.`;
 }
 
-function buildAddSummary(analysis: PositionStructureAnalysis, score: number, disposition: DecisionExecutionDisposition, confirmationSatisfied: boolean): string {
+function buildAddSummary(
+  analysis: PositionStructureAnalysis,
+  score: number,
+  disposition: DecisionExecutionDisposition,
+  confirmationSatisfied: boolean,
+  locale: "ko" | "en",
+): string {
+  if (locale === "ko") {
+    if (disposition === "DEFERRED_CONFIRMATION") return `${analysis.asset} 추가매수 검토는 정당하지만, 확인은 다음 시간 반복까지 보류됩니다.`;
+    if (confirmationSatisfied) return `${analysis.asset} 추가매수 검토가 정당하며, 이전 확인 보류도 이제 충족되었습니다.`;
+    return `${analysis.asset} 추가매수 검토가 상승 점수 ${score} 기준으로 정당합니다.`;
+  }
+
   if (disposition === "DEFERRED_CONFIRMATION") return `${analysis.asset} add review is justified, but confirmation is deferred to the next hourly repeat.`;
   if (confirmationSatisfied) return `${analysis.asset} add review is justified and the deferred confirmation has now been satisfied.`;
   return `${analysis.asset} add review is justified with bullish score ${score}.`;
@@ -697,11 +785,11 @@ function referenceZone(analysis: PositionStructureAnalysis): { low: number | nul
   };
 }
 
-function formatZone(zone: { low: number | null; high: number | null }): string {
-  if (zone.low !== null && zone.high !== null) return `${price(zone.low)}-${price(zone.high)} KRW`;
-  if (zone.low !== null) return `>= ${price(zone.low)} KRW`;
-  if (zone.high !== null) return `<= ${price(zone.high)} KRW`;
-  return "a clearer zone";
+function formatZone(zone: { low: number | null; high: number | null }, locale: "ko" | "en"): string {
+  if (zone.low !== null && zone.high !== null) return `${price(zone.low, locale)}-${price(zone.high, locale)} KRW`;
+  if (zone.low !== null) return `>= ${price(zone.low, locale)} KRW`;
+  if (zone.high !== null) return `<= ${price(zone.high, locale)} KRW`;
+  return locale === "ko" ? "더 명확한 구간" : "a clearer zone";
 }
 
 function buildSetupSupports(analysis: PositionStructureAnalysis): string[] {
@@ -777,13 +865,7 @@ function isHealthyHoldState(analysis: PositionStructureAnalysis): boolean {
 
 function extractLatestDecisionFromLog(log: StoredDecisionLogRecord): StrategyLatestDecision | null {
   const context = toRecord(log.context);
-  const publicContext = toRecord(context?.context);
-  const strategy = toRecord(publicContext?.strategy);
-  const candidate =
-    toRecord(context?.strategySnapshot)
-    ?? toRecord(strategy?.latestDecision)
-    ?? toRecord(toRecord(context?.diagnostics)?.strategy)
-    ?? null;
+  const candidate = toRecord(context?.strategySnapshot);
   if (!candidate) return null;
 
   const action = asStrategyAction(candidate.action);
@@ -809,17 +891,6 @@ function extractLatestDecisionFromLog(log: StoredDecisionLogRecord): StrategyLat
   };
 }
 
-function getDecisionGeneratedAt(log: StoredDecisionLogRecord): string | null {
-  const context = toRecord(log.context);
-  const marketTiming = toRecord(context?.marketTiming);
-  if (typeof marketTiming?.decisionGeneratedAt === "string") {
-    return marketTiming.decisionGeneratedAt;
-  }
-
-  const publicContext = toRecord(context?.context);
-  return typeof publicContext?.generatedAt === "string" ? publicContext.generatedAt : null;
-}
-
 function diffHours(laterIso: string, earlierIso: string): number | null {
   const later = Date.parse(laterIso);
   const earlier = Date.parse(earlierIso);
@@ -839,31 +910,19 @@ function extractLatestDecision(recentDecisionLogs: StoredDecisionLogRecord[]): S
   return null;
 }
 
-function inferRecentExit(input: {
-  currentPosition: PositionState | null;
-  recentDecisionLogs: StoredDecisionLogRecord[];
-  generatedAt: string;
-}): StrategyRecentExit {
-  if (!input.currentPosition || input.currentPosition.quantity > 0) {
+function inferRecentExit(
+  latestManualExit: Pick<PositionStateEventRecord, "createdAt"> | null,
+  generatedAt: string,
+): StrategyRecentExit {
+  if (!latestManualExit) {
     return { createdAt: null, hoursSinceExit: null, realizedPnl: null };
   }
 
-  for (const log of input.recentDecisionLogs) {
-    const context = toRecord(log.context);
-    const publicContext = toRecord(context?.context);
-    const storedPosition = toRecord(publicContext?.positionState);
-    const storedQuantity = asNumber(storedPosition?.quantity);
-    if (storedQuantity === null || storedQuantity <= 0) continue;
-
-    const createdAt = getDecisionGeneratedAt(log) ?? log.createdAt;
-    return {
-      createdAt,
-      hoursSinceExit: diffHours(input.generatedAt, createdAt),
-      realizedPnl: null,
-    };
-  }
-
-  return { createdAt: null, hoursSinceExit: null, realizedPnl: null };
+  return {
+    createdAt: latestManualExit.createdAt,
+    hoursSinceExit: diffHours(generatedAt, latestManualExit.createdAt),
+    realizedPnl: null,
+  };
 }
 
 function computeBullishScore(analysis: PositionStructureAnalysis): number {
@@ -907,7 +966,11 @@ function getReentryPenalty(context: DecisionContext, analysis: PositionStructure
   if (quantity > 0 || recentExit.hoursSinceExit === null || recentExit.hoursSinceExit > RECENT_EXIT_PENALTY_HOURS) return 0;
 
   let penalty = 1;
-  if (recentExit.hoursSinceExit <= RECENT_LOSS_EXIT_PENALTY_HOURS && (recentExit.realizedPnl ?? 0) <= 0) {
+  if (
+    recentExit.hoursSinceExit <= RECENT_LOSS_EXIT_PENALTY_HOURS
+    && recentExit.realizedPnl !== null
+    && recentExit.realizedPnl <= 0
+  ) {
     penalty += 1;
   }
   if (analysis.reclaimStructure && analysis.recoveryQualityScore >= 3) {
@@ -1032,7 +1095,7 @@ function asNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function price(value: number): string {
-  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Math.max(0, value));
+function price(value: number, locale: "ko" | "en"): string {
+  return new Intl.NumberFormat(locale === "ko" ? "ko-KR" : "en-US", { maximumFractionDigits: 0 }).format(Math.max(0, value));
 }
 

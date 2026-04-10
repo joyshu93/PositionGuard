@@ -37,8 +37,10 @@ export interface LocaleMessages {
     invalidCashUsage: string;
     invalidPositionUsage: string;
     invalidSleepUsage: string;
+    invalidFreshStartUsage: string;
     cashRecorded(amount: string): string;
     sleepUpdated(enabled: boolean): string;
+    freshStartRecorded(scope: string): string;
     trackedAssetsRecorded(assets: string, onboarding: string): string;
     trackedAssetsChosen(assets: string, nextSteps: string[]): string;
     recordCashShortcut: string;
@@ -191,6 +193,7 @@ const en: LocaleMessages = {
       "/lastdecision - inspect the latest hourly decision",
       "/hourlyhealth - inspect recent hourly processing health",
       "/lastalert - inspect the last recorded alert state",
+      "/freshstart <BTC|ETH|ALL> confirm - clear recent strategy memory for a fresh start",
       "/sleep on - pause alerts",
       "/sleep off - resume alerts",
       "",
@@ -207,8 +210,20 @@ const en: LocaleMessages = {
     invalidPositionUsage:
       "Usage: /setposition <BTC|ETH> <quantity> <average-entry-price>\nExample: /setposition BTC 0.25 95000000",
     invalidSleepUsage: "Usage: /sleep on or /sleep off",
+    invalidFreshStartUsage: [
+      "Usage: /freshstart <BTC|ETH|ALL> confirm",
+      "Example: /freshstart BTC confirm",
+      "This clears recent deferred confirmation, recent exit, and alert/reminder memory for the chosen scope only.",
+      "Stored cash and spot records are kept.",
+    ].join("\n"),
     cashRecorded: (amount) => `Cash recorded: ${amount}.`,
     sleepUpdated: (enabled) => `Sleep mode is now ${enabled ? "on" : "off"}.`,
+    freshStartRecorded: (scope) => [
+      `Fresh-start marker recorded for ${scope}.`,
+      "Stored cash and spot records were kept.",
+      "Recent deferred confirmation, recent exit, and alert/reminder memory will restart from now.",
+      "This is record-only guidance.",
+    ].join("\n"),
     trackedAssetsRecorded: (assets, onboarding) =>
       [`Tracked assets recorded: ${assets}.`, onboarding].join("\n"),
     trackedAssetsChosen: (assets, nextSteps) =>
@@ -375,6 +390,7 @@ const ko: LocaleMessages = {
       "/lastdecision - \uCD5C\uADFC \uC2DC\uAC04\uBCC4 \uACB0\uC815 \uD655\uC778",
       "/hourlyhealth - \uCD5C\uADFC \uC2DC\uAC04\uBCC4 \uCC98\uB9AC \uC0C1\uD0DC \uD655\uC778",
       "/lastalert - \uB9C8\uC9C0\uB9C9 \uC54C\uB9BC \uC0C1\uD0DC \uD655\uC778",
+      "/freshstart <BTC|ETH|ALL> confirm - \uCD5C\uADFC \uC804\uB7B5 \uBA54\uBAA8\uB9AC \uCD08\uAE30\uD654",
       "/sleep on - \uC54C\uB9BC \uC77C\uC2DC\uC815\uC9C0",
       "/sleep off - \uC54C\uB9BC \uC7AC\uAC1C",
       "",
@@ -391,8 +407,20 @@ const ko: LocaleMessages = {
     invalidPositionUsage:
       "\uC0AC\uC6A9\uBC95: /setposition <BTC|ETH> <quantity> <average-entry-price>\n\uC608\uC2DC: /setposition BTC 0.25 95000000",
     invalidSleepUsage: "\uC0AC\uC6A9\uBC95: /sleep on \uB610\uB294 /sleep off",
+    invalidFreshStartUsage: [
+      "\uC0AC\uC6A9\uBC95: /freshstart <BTC|ETH|ALL> confirm",
+      "\uC608\uC2DC: /freshstart BTC confirm",
+      "\uC120\uD0DD\uD55C \uBC94\uC704\uC758 recent exit, deferred confirmation, \uC54C\uB9BC/\uB9AC\uB9C8\uC778\uB354 \uBA54\uBAA8\uB9AC\uB9CC \uCD08\uAE30\uD654\uD569\uB2C8\uB2E4.",
+      "\uD604\uAE08\uACFC \uD604\uBB3C \uAE30\uB85D\uC740 \uC720\uC9C0\uB429\uB2C8\uB2E4.",
+    ].join("\n"),
     cashRecorded: (amount) => `\uD604\uAE08 \uAE30\uB85D \uC644\uB8CC: ${amount}.`,
     sleepUpdated: (enabled) => `\uC218\uBA74 \uBAA8\uB4DC\uB294 \uC774\uC81C ${enabled ? "\uCF1C\uC9D0" : "\uAEBC\uC9D0"} \uC0C1\uD0DC\uC785\uB2C8\uB2E4.`,
+    freshStartRecorded: (scope) => [
+      `${scope} \uBC94\uC704\uC5D0 \uB300\uD55C fresh-start marker\uB97C \uAE30\uB85D\uD588\uC2B5\uB2C8\uB2E4.`,
+      "\uD604\uAE08\uACFC \uD604\uBB3C \uAE30\uB85D\uC740 \uADF8\uB300\uB85C \uC720\uC9C0\uB429\uB2C8\uB2E4.",
+      "\uC774\uC81C\uBD80\uD130 recent exit, deferred confirmation, \uC54C\uB9BC/\uB9AC\uB9C8\uC778\uB354 \uBA54\uBAA8\uB9AC\uB294 \uC0C8\uB85C \uACC4\uC0B0\uB429\uB2C8\uB2E4.",
+      "\uC774 \uC548\uB0B4\uB294 \uAE30\uB85D \uC804\uC6A9\uC785\uB2C8\uB2E4.",
+    ].join("\n"),
     trackedAssetsRecorded: (assets, onboarding) =>
       [`\uCD94\uC801 \uC790\uC0B0 \uC800\uC7A5 \uC644\uB8CC: ${assets}.`, onboarding, "\uC8FC\uBB38\uC740 \uC2E4\uD589\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4."].join("\n"),
     trackedAssetsChosen: (assets, nextSteps) =>
@@ -482,7 +510,7 @@ const ko: LocaleMessages = {
     noteUnknown: "\uC778\uC2DD\uB418\uC9C0 \uC54A\uB294 \uC0C1\uD0DC\uC785\uB2C8\uB2E4",
   },
   alerts: {
-    actionNeededHeadline: (headline) => `ACTION NEEDED: ${headline}`,
+    actionNeededHeadline: (headline) => `조치 필요: ${headline}`,
     setupIncomplete: (asset) => `${asset} \uC124\uC815\uC774 \uBBF8\uC644\uB8CC\uC785\uB2C8\uB2E4`,
     marketDataUnavailable: (asset) => `${asset} \uC2DC\uC7A5 \uC2A4\uB0C5\uC0F7\uC744 \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4`,
     riskReview: (asset) => `${asset} \uB9AC\uC2A4\uD06C \uAC80\uD1A0\uAC00 \uD544\uC694\uD569\uB2C8\uB2E4`,

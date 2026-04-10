@@ -96,7 +96,9 @@ export function buildActionNeededMessage(input: AlertMessageInput): string {
   const locale = resolveUserLocale(input.locale ?? null);
   const messages = getMessages(locale);
   const topReasons = input.reasons.slice(0, 3);
-  const headline = messages.alerts.actionNeededHeadline(`${input.asset} spot`);
+  const headline = messages.alerts.actionNeededHeadline(
+    locale === "ko" ? `${input.asset} 현물` : `${input.asset} spot`,
+  );
   const lines = [
     headline,
     `${input.market}`,

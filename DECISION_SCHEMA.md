@@ -57,6 +57,7 @@ The future decision engine should receive a context object with these categories
 - average entry price
 - reporting timestamp
 - whether position is effectively empty
+- explicit manual state-transition memory derived from user-reported position changes, including recent `entry`, `add`, `reduce`, or `exit` transitions when available
 
 ### Market Context
 - symbol: `KRW-BTC` or `KRW-ETH`
@@ -94,6 +95,12 @@ The current parity-oriented judgment core also derives transparent structural su
 - `weakeningStage`
 
 These summaries should remain explainable and deterministic, even when they are used to threshold entry, add-buy, or reduce review decisions.
+
+The current parity-oriented memory rules also use two explicit stateful inputs where available:
+
+- latest deferred-confirmation strategy snapshot from the most recent hourly decision log
+- recent manual-exit timing derived from user-reported position transitions rather than reconstructed only from prior hourly decisions
+- explicit fresh-start reset markers that intentionally sever older deferred-confirmation, recent-exit, and alert/reminder memory without deleting historical records
 
 ## Decision Output Shape
 The decision engine output should remain machine-friendly and easy to replace.
