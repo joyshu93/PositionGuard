@@ -2,8 +2,11 @@ import type {
   TelegramCallbackAction,
   TelegramCallbackQuery,
   TelegramCommandContext,
+  TelegramDocument,
+  TelegramMediaMessageContext,
   TelegramMessage,
   TelegramMessageEntity,
+  TelegramPhotoSize,
   TelegramUserProfile,
   TelegramUpdate,
 } from './types.js';
@@ -130,6 +133,27 @@ export function parseTelegramCallbackAction(data: string | undefined): TelegramC
   if (data === 'setup:position:eth') {
     return { kind: 'setup:position', asset: 'ETH' };
   }
+  if (data === 'import:start') {
+    return { kind: 'import:start' };
+  }
+  if (data.startsWith('import:confirm:')) {
+    const importId = Number(data.slice('import:confirm:'.length));
+    return Number.isInteger(importId) && importId > 0
+      ? { kind: 'import:confirm', importId }
+      : null;
+  }
+  if (data.startsWith('import:retry:')) {
+    const importId = Number(data.slice('import:retry:'.length));
+    return Number.isInteger(importId) && importId > 0
+      ? { kind: 'import:retry', importId }
+      : null;
+  }
+  if (data.startsWith('import:cancel:')) {
+    const importId = Number(data.slice('import:cancel:'.length));
+    return Number.isInteger(importId) && importId > 0
+      ? { kind: 'import:cancel', importId }
+      : null;
+  }
   if (data === 'inspect:lastdecision') {
     return { kind: 'inspect:lastdecision' };
   }
@@ -142,7 +166,7 @@ export function parseTelegramCallbackAction(data: string | undefined): TelegramC
 
 export function commandContextFromMessage(update: TelegramUpdate, message: TelegramMessage): TelegramCommandContext | null {
   const from = message.from;
-  const text = message.text?.trim();
+  const text = (message.text ?? message.caption)?.trim();
   if (!from || !text) {
     return null;
   }
@@ -160,6 +184,28 @@ export function commandContextFromMessage(update: TelegramUpdate, message: Teleg
     text,
     command: parsed.command,
     args: parsed.args,
+  };
+}
+
+export function mediaContextFromMessage(
+  update: TelegramUpdate,
+  message: TelegramMessage,
+): TelegramMediaMessageContext | null {
+  const from = message.from;
+  if (!from) {
+    return null;
+  }
+
+  if (!hasImagePayload(message)) {
+    return null;
+  }
+
+  return {
+    update,
+    chatId: message.chat.id,
+    userId: from.id,
+    profile: buildTelegramProfile(from, message.chat.id, message.chat),
+    message,
   };
 }
 
@@ -195,8 +241,17 @@ function parseTelegramMessage(input: Record<string, unknown>): TelegramMessage {
   if (typeof input.text === 'string') {
     message.text = input.text;
   }
+  if (typeof input.caption === 'string') {
+    message.caption = input.caption;
+  }
   if (Array.isArray(input.entities)) {
     message.entities = input.entities as TelegramMessageEntity[];
+  }
+  if (Array.isArray(input.photo)) {
+    message.photo = input.photo.filter(isTelegramPhotoSize) as TelegramPhotoSize[];
+  }
+  if (isTelegramDocument(input.document)) {
+    message.document = input.document;
   }
 
   return message;
@@ -224,6 +279,39 @@ function isObject(value: unknown): value is Record<string, unknown> {
 
 function isTelegramUser(value: unknown): value is TelegramCallbackQuery['from'] {
   return isObject(value) && typeof value.id === 'number';
+}
+
+function isTelegramPhotoSize(value: unknown): value is TelegramPhotoSize {
+  return (
+    isObject(value) &&
+    typeof value.file_id === 'string' &&
+    typeof value.width === 'number' &&
+    typeof value.height === 'number'
+  );
+}
+
+function isTelegramDocument(value: unknown): value is TelegramDocument {
+  return isObject(value) && typeof value.file_id === 'string';
+}
+
+function hasImagePayload(message: TelegramMessage): boolean {
+  if (Array.isArray(message.photo) && message.photo.length > 0) {
+    return true;
+  }
+
+  if (!message.document) {
+    return false;
+  }
+
+  const mimeType = message.document.mime_type?.toLowerCase() ?? '';
+  const fileName = message.document.file_name?.toLowerCase() ?? '';
+  return (
+    mimeType.startsWith('image/') ||
+    fileName.endsWith('.png') ||
+    fileName.endsWith('.jpg') ||
+    fileName.endsWith('.jpeg') ||
+    fileName.endsWith('.webp')
+  );
 }
 
 function buildTelegramProfile(

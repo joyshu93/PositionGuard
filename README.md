@@ -27,6 +27,7 @@ This repository is intentionally in an MVP scaffold stage. The current goal is t
 - `src/index.ts` hosts the Worker entrypoint, webhook wiring, and scheduled trigger integration.
 - `src/upbit.ts` contains public Upbit quotation and candle normalization.
 - `src/telegram.ts` owns Telegram webhook parsing and routing.
+- `src/image-import/*` owns screenshot-import extraction, pending confirmation, and record-only save flow.
 - `src/db/*` owns D1 persistence and operator-visibility queries.
 - `src/decision/*` owns decision contracts, readiness-aware context assembly, market-structure summarization, and the conservative MVP coaching engine.
 - `migrations/` holds D1 schema migrations.
@@ -52,6 +53,8 @@ Expected environment variables:
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_WEBHOOK_SECRET`
 - `UPBIT_BASE_URL` if you want to override the default
+- `OPENAI_API_KEY` if you want to enable screenshot-based record import
+- `OPENAI_VISION_MODEL` if you want to override the default vision model for screenshot import
 
 Useful commands:
 
@@ -87,6 +90,7 @@ The migration history now covers:
 - `account_state`
 - `position_state`
 - `position_state_events`
+- `pending_image_imports`
 - `strategy_memory_resets`
 - `decision_logs`
 - `notification_events`
@@ -192,12 +196,13 @@ Expected results:
 Safe Telegram command smoke path after webhook registration:
 
 1. Send `/start`
-2. Send `/track BTC` or `/track BOTH`
-3. Send `/setcash 1000000`
-4. Send `/setposition BTC 0 0` or another manual spot record
-5. Send `/status`
-6. Send `/lastdecision`
-7. Send `/hourlyhealth`
+2. If screenshot import is configured, press `Import image` or send `/importimage` and then upload a portfolio screenshot
+3. Send `/track BTC` or `/track BOTH`
+4. Send `/setcash 1000000`
+5. Send `/setposition BTC 0 0` or another manual spot record
+6. Send `/status`
+7. Send `/lastdecision`
+8. Send `/hourlyhealth`
 
 All of these remain record-only. No order execution, private exchange access, or live balance sync is involved.
 
@@ -265,6 +270,7 @@ Supported bot commands:
 - `/start`
 - `/help`
 - `/language <ko|en>`
+- `/importimage`
 - `/status`
 - `/track`
 - `/setcash`
@@ -282,6 +288,8 @@ Current behavior:
 - `/help` shows supported commands
 - `/language <ko|en>` saves a persistent user-facing language preference
 - Telegram `language_code` is only used as the initial fallback when a user has no saved language yet
+- `/importimage` opens a screenshot-import flow for current portfolio snapshots and asks for confirmation before anything is saved
+- image messages routed through that flow remain record-only and only update stored manual state after explicit confirmation
 - `/track <BTC|ETH|BOTH>` records which spot assets the user wants PositionGuard to track
 - inline callback buttons let the user choose tracked assets, inspect setup progress, record cash, open BTC/ETH spot-record shortcuts, refresh `/status`, and open `/lastdecision` and `/hourlyhealth`
 - `/status` reads stored user-reported state
@@ -321,6 +329,9 @@ This remains a manual record system. It does not sync balances or execute orders
 - No support for markets beyond BTC and ETH spot
 - No broad notification engine; only the temporary `ACTION_NEEDED` contract is implemented for narrow alerting and cooldown-based suppression
 - Onboarding is intentionally lightweight; inline buttons guide setup, but cash and position values are still entered with commands
+- Screenshot import currently supports current portfolio / asset-status screenshots only
+- Screenshot import does not yet support trade-history rows or multi-transaction batch import
+- Screenshot import remains optional and is unavailable unless `OPENAI_API_KEY` is configured
 - `/lastalert`, `/lastdecision`, and `/hourlyhealth` are user-scoped inspection tools, not a global admin console
 
 Decision outputs are structured as coaching summaries and reasons, and the current engine stays conservative and record-only. The judgment core now mirrors the PaperTrade-style interpretation flow: completed-candle market structure analysis, explicit entry-path and evidence scoring, thresholded confirmation, and invalidation-first weakening checks. It still prefers `SETUP_INCOMPLETE` / `INSUFFICIENT_DATA` / `NO_ACTION` when information is missing or structure is quiet, and keeps `ACTION_NEEDED` narrow for explicit manual correction, repeated market-data failure, or a clear coaching review need. When a setup is actionable, the engine may also attach a structured `executionGuide` with record-only coaching detail such as entry/add/reduce zone, staged size guidance, invalidation level, and chase guard.

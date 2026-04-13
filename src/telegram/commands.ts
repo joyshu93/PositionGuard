@@ -1,4 +1,10 @@
 import type { SupportedLocale } from "../domain/types.js";
+import type {
+  ImageImportConfirmResult,
+  ImageImportProcessingResult,
+  ImageImportRejectResult,
+  PortfolioSnapshotImportData,
+} from "../image-import/types.js";
 import type { StrategyMemoryResetScope } from "../types/persistence.js";
 import { formatAvailability, formatCompactTimestampForLocale, formatLocaleName, formatNumberForLocale, getMessages, resolveUserLocale } from "../i18n/index.js";
 import { formatValidationErrors, validatePositionInput } from "../validation.js";
@@ -9,6 +15,7 @@ import type {
   TelegramCommandContext,
   TelegramHourlyHealthSnapshot,
   TelegramLastDecisionSnapshot,
+  TelegramMediaMessageContext,
   TelegramOutgoingAction,
   TelegramReplyMarkup,
   TelegramOnboardingSnapshot,
@@ -59,6 +66,8 @@ export function routeCommand(
         return handleHourlyHealth(context, deps, locale);
       case "lastalert":
         return handleLastAlert(context, deps, locale);
+      case "importimage":
+        return handleImageImportStart(context, deps, locale);
       case "freshstart":
         return handleFreshStart(context, deps, locale);
       case "sleep":
@@ -108,6 +117,22 @@ async function routeCallback(
 
   if (action.kind === "setup:position") {
     return [answer(callbackQuery.id), ...buildPositionShortcutActions(context, locale, action.asset)];
+  }
+
+  if (action.kind === "import:start") {
+    return [answer(callbackQuery.id), ...(await handleImageImportStart(context, deps, locale))];
+  }
+
+  if (action.kind === "import:confirm") {
+    return [answer(callbackQuery.id), ...(await handleImageImportConfirm(context, deps, locale, action.importId))];
+  }
+
+  if (action.kind === "import:retry") {
+    return [answer(callbackQuery.id), ...(await handleImageImportRetry(context, deps, locale, action.importId))];
+  }
+
+  if (action.kind === "import:cancel") {
+    return [answer(callbackQuery.id), ...(await handleImageImportCancel(context, deps, locale, action.importId))];
   }
 
   if (action.kind === "inspect:lastdecision") {
@@ -318,28 +343,75 @@ async function handleSleep(
   return [send(context.chatId, messages.command.sleepUpdated(arg), buildOnboardingKeyboard(locale))];
 }
 
+export async function routeMediaMessage(
+  context: TelegramMediaMessageContext,
+  deps: TelegramRouterDependencies,
+): Promise<TelegramOutgoingAction[]> {
+  const bootstrap = deps.stateStore?.upsertUserState(context.profile);
+  const fallbackLocale = resolveUserLocale(
+    context.profile.preferredLocale ?? null,
+    context.profile.languageCode ?? null,
+  );
+
+  const bootstrappedLocale = await Promise.resolve(bootstrap);
+  const locale = resolveUserLocale(
+    (bootstrappedLocale as SupportedLocale | null | undefined) ?? fallbackLocale,
+    context.profile.languageCode ?? null,
+  );
+  const messages = getMessages(locale);
+  const provider = deps.imageImportProvider;
+
+  if (!provider) {
+    return [send(context.chatId, messages.importFlow.unavailable, buildOnboardingKeyboard(locale))];
+  }
+
+  const mediaFile = getPreferredImageFile(context);
+  if (!mediaFile) {
+    return [send(context.chatId, messages.importFlow.unsupportedMedia, buildOnboardingKeyboard(locale))];
+  }
+
+  const result = await provider.processMedia({
+    telegramUserId: context.userId,
+    telegramChatId: context.chatId,
+    telegramMessageId: context.message.message_id,
+    username: context.profile.username ?? null,
+    displayName: context.profile.displayName ?? null,
+    languageCode: context.profile.languageCode ?? null,
+    preferredLocale: locale,
+    sourceKind: mediaFile.kind,
+    telegramFileId: mediaFile.fileId,
+    mimeType: mediaFile.mimeType,
+    caption: context.message.caption ?? null,
+  });
+
+  return buildImageImportProcessingActions(context.chatId, locale, result);
+}
+
 export function buildOnboardingKeyboard(locale: SupportedLocale = "en"): TelegramReplyMarkup {
   const messages = getMessages(locale);
   return {
     inline_keyboard: [
+      [
+        { text: messages.buttons.importImage, callback_data: "import:start" },
+        { text: messages.buttons.setupProgress, callback_data: "setup:progress" },
+      ],
       [
         { text: messages.buttons.trackBtc, callback_data: "setup:track:btc" },
         { text: messages.buttons.trackEth, callback_data: "setup:track:eth" },
       ],
       [
         { text: messages.buttons.trackBoth, callback_data: "setup:track:both" },
-        { text: messages.buttons.setupProgress, callback_data: "setup:progress" },
-      ],
-      [
         { text: messages.buttons.recordCash, callback_data: "setup:cash" },
+      ],
+      [
         { text: messages.buttons.recordBtc, callback_data: "setup:position:btc" },
-      ],
-      [
         { text: messages.buttons.recordEth, callback_data: "setup:position:eth" },
-        { text: messages.buttons.status, callback_data: "status:refresh" },
       ],
       [
+        { text: messages.buttons.status, callback_data: "status:refresh" },
         { text: messages.buttons.lastDecision, callback_data: "inspect:lastdecision" },
+      ],
+      [
         { text: messages.buttons.hourlyHealth, callback_data: "inspect:hourlyhealth" },
       ],
     ],
@@ -436,6 +508,22 @@ async function handleTrackedAssetsChoice(
   ];
 }
 
+async function handleImageImportStart(
+  context: TelegramCommandContext,
+  deps: TelegramRouterDependencies,
+  locale: SupportedLocale,
+): Promise<TelegramOutgoingAction[]> {
+  const messages = getMessages(locale);
+  const provider = deps.imageImportProvider;
+
+  if (!provider || !provider.isConfigured()) {
+    return [send(context.chatId, messages.importFlow.unavailable, buildOnboardingKeyboard(locale))];
+  }
+
+  await provider.beginImport({ telegramUserId: context.userId });
+  return [send(context.chatId, messages.importFlow.startPrompt, buildOnboardingKeyboard(locale))];
+}
+
 function buildCashShortcutActions(
   context: TelegramCommandContext,
   locale: SupportedLocale,
@@ -467,6 +555,70 @@ function buildPositionShortcutActions(
       buildOnboardingKeyboard(locale),
     ),
   ];
+}
+
+async function handleImageImportConfirm(
+  context: TelegramCommandContext,
+  deps: TelegramRouterDependencies,
+  locale: SupportedLocale,
+  importId: number,
+): Promise<TelegramOutgoingAction[]> {
+  const messages = getMessages(locale);
+  const provider = deps.imageImportProvider;
+
+  if (!provider) {
+    return [send(context.chatId, messages.importFlow.unavailable, buildOnboardingKeyboard(locale))];
+  }
+
+  const result = await provider.confirmImport({
+    telegramUserId: context.userId,
+    importId,
+  });
+
+  return buildImageImportConfirmActions(context.chatId, locale, result);
+}
+
+async function handleImageImportRetry(
+  context: TelegramCommandContext,
+  deps: TelegramRouterDependencies,
+  locale: SupportedLocale,
+  importId: number,
+): Promise<TelegramOutgoingAction[]> {
+  const messages = getMessages(locale);
+  const provider = deps.imageImportProvider;
+
+  if (!provider) {
+    return [send(context.chatId, messages.importFlow.unavailable, buildOnboardingKeyboard(locale))];
+  }
+
+  await provider.rejectImport({
+    telegramUserId: context.userId,
+    importId,
+  });
+  await provider.beginImport({ telegramUserId: context.userId });
+
+  return [send(context.chatId, messages.importFlow.retryPrompt, buildOnboardingKeyboard(locale))];
+}
+
+async function handleImageImportCancel(
+  context: TelegramCommandContext,
+  deps: TelegramRouterDependencies,
+  locale: SupportedLocale,
+  importId: number,
+): Promise<TelegramOutgoingAction[]> {
+  const messages = getMessages(locale);
+  const provider = deps.imageImportProvider;
+
+  if (!provider) {
+    return [send(context.chatId, messages.importFlow.unavailable, buildOnboardingKeyboard(locale))];
+  }
+
+  const result = await provider.rejectImport({
+    telegramUserId: context.userId,
+    importId,
+  });
+
+  return buildImageImportRejectActions(context.chatId, locale, result);
 }
 
 async function buildFallbackStatus(
@@ -637,6 +789,216 @@ function truncateText(value: string, limit: number): string {
   }
 
   return `${value.slice(0, Math.max(0, limit - 3)).trimEnd()}...`;
+}
+
+function getPreferredImageFile(
+  context: TelegramMediaMessageContext,
+): { kind: "PHOTO" | "DOCUMENT"; fileId: string; mimeType: string } | null {
+  const photo = context.message.photo?.at(-1);
+  if (photo?.file_id) {
+    return {
+      kind: "PHOTO",
+      fileId: photo.file_id,
+      mimeType: "image/jpeg",
+    };
+  }
+
+  const document = context.message.document;
+  if (!document?.file_id) {
+    return null;
+  }
+
+  return {
+    kind: "DOCUMENT",
+    fileId: document.file_id,
+    mimeType: document.mime_type ?? "image/jpeg",
+  };
+}
+
+function buildImageImportProcessingActions(
+  chatId: number,
+  locale: SupportedLocale,
+  result: ImageImportProcessingResult,
+): TelegramOutgoingAction[] {
+  const messages = getMessages(locale);
+
+  if (result.kind === "UNAVAILABLE") {
+    return [send(chatId, messages.importFlow.unavailable, buildOnboardingKeyboard(locale))];
+  }
+
+  if (result.kind === "UNSUPPORTED_MEDIA") {
+    return [send(chatId, messages.importFlow.unsupportedMedia, buildOnboardingKeyboard(locale))];
+  }
+
+  if (result.kind === "FAILED") {
+    return [
+      send(
+        chatId,
+        messages.importFlow.failed(result.detail ?? messages.booleans.notAvailable),
+        buildOnboardingKeyboard(locale),
+      ),
+    ];
+  }
+
+  if (result.kind === "UNSUPPORTED_KIND") {
+    return [send(chatId, messages.importFlow.unsupportedKind, buildOnboardingKeyboard(locale))];
+  }
+
+  if (result.kind === "LOW_CONFIDENCE") {
+    return [
+      send(
+        chatId,
+        [
+          messages.importFlow.lowConfidence,
+          result.summary,
+          ...result.warnings.map((warning) => `- ${warning}`),
+          messages.importFlow.retryPrompt,
+        ].join("\n"),
+        buildOnboardingKeyboard(locale),
+      ),
+    ];
+  }
+
+  return [
+    send(
+      chatId,
+      formatImageImportConfirmationMessage(result.portfolio, locale, result.summary, result.warnings),
+      buildImageImportConfirmationKeyboard(locale, result.importId),
+    ),
+  ];
+}
+
+function buildImageImportConfirmActions(
+  chatId: number,
+  locale: SupportedLocale,
+  result: ImageImportConfirmResult,
+): TelegramOutgoingAction[] {
+  const messages = getMessages(locale);
+
+  if (result.kind === "NOT_FOUND") {
+    return [send(chatId, messages.importFlow.notFound, buildOnboardingKeyboard(locale))];
+  }
+
+  if (result.kind === "EXPIRED") {
+    return [send(chatId, messages.importFlow.expired, buildOnboardingKeyboard(locale))];
+  }
+
+  return [
+    send(
+      chatId,
+      formatImageImportAppliedMessage(result.portfolio, result.applied, locale),
+      buildOnboardingKeyboard(locale),
+    ),
+  ];
+}
+
+function buildImageImportRejectActions(
+  chatId: number,
+  locale: SupportedLocale,
+  result: ImageImportRejectResult,
+): TelegramOutgoingAction[] {
+  const messages = getMessages(locale);
+
+  return [
+    send(
+      chatId,
+      result.kind === "NOT_FOUND" ? messages.importFlow.notFound : messages.importFlow.cancelled,
+      buildOnboardingKeyboard(locale),
+    ),
+  ];
+}
+
+function formatImageImportConfirmationMessage(
+  portfolio: PortfolioSnapshotImportData,
+  locale: SupportedLocale,
+  summary: string,
+  warnings: string[],
+): string {
+  const messages = getMessages(locale);
+  const lines = [
+    messages.importFlow.confirmTitle,
+    summary,
+  ];
+
+  if (portfolio.hasCash) {
+    lines.push(messages.importFlow.confirmCash(formatNumberForLocale(locale, portfolio.cashKrw)));
+  }
+  if (portfolio.hasBtc) {
+    lines.push(
+      messages.importFlow.confirmAsset(
+        "BTC",
+        `${formatNumberForLocale(locale, portfolio.btcQuantity)} @ avg ${formatNumberForLocale(locale, portfolio.btcAverageEntryPrice)} KRW`,
+      ),
+    );
+  }
+  if (portfolio.hasEth) {
+    lines.push(
+      messages.importFlow.confirmAsset(
+        "ETH",
+        `${formatNumberForLocale(locale, portfolio.ethQuantity)} @ avg ${formatNumberForLocale(locale, portfolio.ethAverageEntryPrice)} KRW`,
+      ),
+    );
+  }
+
+  if (!portfolio.hasCash && !portfolio.hasBtc && !portfolio.hasEth) {
+    lines.push(messages.importFlow.noDetectedValues);
+  }
+
+  if (warnings.length > 0) {
+    lines.push(...warnings.map((warning) => `- ${warning}`));
+  }
+
+  lines.push(messages.importFlow.confirmHint);
+  return lines.join("\n");
+}
+
+function formatImageImportAppliedMessage(
+  portfolio: PortfolioSnapshotImportData,
+  applied: { cash: boolean; btc: boolean; eth: boolean },
+  locale: SupportedLocale,
+): string {
+  const messages = getMessages(locale);
+  const lines = [messages.importFlow.saved];
+
+  if (applied.cash) {
+    lines.push(messages.importFlow.confirmCash(formatNumberForLocale(locale, portfolio.cashKrw)));
+  }
+  if (applied.btc) {
+    lines.push(
+      messages.importFlow.confirmAsset(
+        "BTC",
+        `${formatNumberForLocale(locale, portfolio.btcQuantity)} @ avg ${formatNumberForLocale(locale, portfolio.btcAverageEntryPrice)} KRW`,
+      ),
+    );
+  }
+  if (applied.eth) {
+    lines.push(
+      messages.importFlow.confirmAsset(
+        "ETH",
+        `${formatNumberForLocale(locale, portfolio.ethQuantity)} @ avg ${formatNumberForLocale(locale, portfolio.ethAverageEntryPrice)} KRW`,
+      ),
+    );
+  }
+
+  return lines.join("\n");
+}
+
+function buildImageImportConfirmationKeyboard(
+  locale: SupportedLocale,
+  importId: number,
+): TelegramReplyMarkup {
+  const messages = getMessages(locale);
+  return {
+    inline_keyboard: [
+      [
+        { text: messages.buttons.confirmSave, callback_data: `import:confirm:${importId}` },
+        { text: messages.buttons.retryImport, callback_data: `import:retry:${importId}` },
+      ],
+      [
+        { text: messages.buttons.cancelImport, callback_data: `import:cancel:${importId}` },
+      ],
+    ],
+  };
 }
 
 export interface TelegramActionNeededAlertInput {

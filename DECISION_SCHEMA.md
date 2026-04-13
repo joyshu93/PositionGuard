@@ -44,12 +44,14 @@ The future decision engine should receive a context object with these categories
 - sleep mode preference
 - tracked asset preference, limited to BTC, ETH, or both
 - whether onboarding is complete
+- confirmed user-reported state may arrive either from explicit text commands or from a confirmed screenshot import flow
 - setup readiness should remain explicit and user-reported, with account cash plus the selected tracked asset position records tracked separately
 
 ### Account State
 - available cash
 - reporting timestamp
 - source marker: user_reported
+- screenshot-assisted imports may help populate the same user-reported fields, but they must remain confirm-before-save and record-only
 
 ### Position State
 - asset: BTC or ETH

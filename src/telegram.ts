@@ -1,6 +1,6 @@
 import { createTelegramBotClient, executeTelegramActions } from './telegram/client.js';
-import { callbackContextFromQuery, commandContextFromMessage, parseTelegramUpdate } from './telegram/parser.js';
-import { routeCommand } from './telegram/commands.js';
+import { callbackContextFromQuery, commandContextFromMessage, mediaContextFromMessage, parseTelegramUpdate } from './telegram/parser.js';
+import { routeCommand, routeMediaMessage } from './telegram/commands.js';
 import type { TelegramOutgoingAction, TelegramRouterDependencies, TelegramUpdate, TelegramWebhookContext, TelegramWebhookEnv } from './telegram/types.js';
 import { getRuntimeConfigReport } from './env.js';
 
@@ -10,11 +10,14 @@ export type {
   TelegramCallbackQuery,
   TelegramChat,
   TelegramCommandContext,
+  TelegramDocument,
   TelegramHourlyHealthSnapshot,
   TelegramInspectionProvider,
   TelegramLastDecisionSnapshot,
+  TelegramMediaMessageContext,
   TelegramMessage,
   TelegramOutgoingAction,
+  TelegramPhotoSize,
   TelegramReplyMarkup,
   TelegramRouterDependencies,
   TelegramOnboardingProvider,
@@ -96,11 +99,17 @@ export async function routeTelegramUpdate(update: TelegramUpdate | null, deps: T
   }
 
   if (update.message) {
-    const context = commandContextFromMessage(update, update.message);
-    if (!context) {
-      return [];
+    const commandContext = commandContextFromMessage(update, update.message);
+    if (commandContext) {
+      return routeCommand(commandContext, deps);
     }
-    return routeCommand(context, deps);
+
+    const mediaContext = mediaContextFromMessage(update, update.message);
+    if (mediaContext) {
+      return routeMediaMessage(mediaContext, deps);
+    }
+
+    return [];
   }
 
   return [];

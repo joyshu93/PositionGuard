@@ -5,6 +5,8 @@ export interface Env {
   TELEGRAM_WEBHOOK_PATH?: string;
   HEALTH_PATH?: string;
   UPBIT_BASE_URL?: string;
+  OPENAI_API_KEY?: string;
+  OPENAI_VISION_MODEL?: string;
 }
 
 export const DEFAULT_HEALTH_PATH = "/health";

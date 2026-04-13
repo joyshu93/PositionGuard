@@ -107,6 +107,79 @@ export interface StrategyMemoryResetInput {
   createdAt?: string;
 }
 
+export type PendingImageImportStatus =
+  | "AWAITING_UPLOAD"
+  | "PENDING_CONFIRMATION"
+  | "CONFIRMED"
+  | "REJECTED"
+  | "FAILED";
+
+export type PendingImageImportKind =
+  | "PORTFOLIO_SNAPSHOT"
+  | "TRADE_HISTORY_ROW"
+  | "UNKNOWN";
+
+export interface PendingImageImportRecord {
+  id: number;
+  userId: number;
+  status: PendingImageImportStatus;
+  importKind: PendingImageImportKind;
+  telegramFileId: string | null;
+  telegramMessageId: number | null;
+  extractedPayload: unknown;
+  confidence: number | null;
+  errorMessage: string | null;
+  expiresAt: string;
+  confirmedAt: string | null;
+  rejectedAt: string | null;
+  failedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PendingImageImportCreateInput {
+  userId: number;
+  status?: PendingImageImportStatus;
+  importKind?: PendingImageImportKind;
+  telegramFileId?: string | null | undefined;
+  telegramMessageId?: number | null | undefined;
+  extractedPayload?: unknown;
+  confidence?: number | null | undefined;
+  errorMessage?: string | null | undefined;
+  expiresAt: string;
+  confirmedAt?: string | null | undefined;
+  rejectedAt?: string | null | undefined;
+  failedAt?: string | null | undefined;
+  createdAt?: string | undefined;
+  updatedAt?: string | undefined;
+}
+
+export interface PendingImageImportUpdateInput {
+  id: number;
+  status?: PendingImageImportStatus;
+  importKind?: PendingImageImportKind;
+  telegramFileId?: string | null | undefined;
+  telegramMessageId?: number | null | undefined;
+  extractedPayload?: unknown;
+  confidence?: number | null | undefined;
+  errorMessage?: string | null | undefined;
+  expiresAt?: string | null | undefined;
+  confirmedAt?: string | null | undefined;
+  rejectedAt?: string | null | undefined;
+  failedAt?: string | null | undefined;
+  updatedAt?: string | undefined;
+}
+
+export interface PendingImageImportLookup {
+  id: number;
+  userId: number;
+  status: PendingImageImportStatus;
+  importKind: PendingImageImportKind;
+  expiresAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type DecisionStatus =
   | "SETUP_INCOMPLETE"
   | "INSUFFICIENT_DATA"

@@ -3,6 +3,7 @@ export * from "./db";
 export * from "./decision-logs";
 export * from "./operator-visibility";
 export * from "./notification-events";
+export * from "./pending-image-imports";
 export * from "./position-state";
 export * from "./repositories";
 export * from "./user-state";

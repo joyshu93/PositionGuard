@@ -8,6 +8,7 @@ import {
 } from "./env.js";
 import { runHourlyCycle } from "./hourly.js";
 import { handleTelegramWebhook } from "./telegram.js";
+import { createTelegramImageImportProvider } from "./image-import/service.js";
 import {
   getUserByTelegramUserId,
   ensureTelegramUser,
@@ -117,6 +118,12 @@ async function handleFetch(
         ? { TELEGRAM_WEBHOOK_SECRET: runtime.telegramWebhookSecret }
         : {}),
     };
+    const imageImportProvider = createTelegramImageImportProvider({
+      db: env.DB,
+      telegramBotToken: runtime.telegramBotToken,
+      openAiApiKey: env.OPENAI_API_KEY ?? null,
+      openAiVisionModel: env.OPENAI_VISION_MODEL ?? null,
+    });
 
     return handleTelegramWebhook(request, {
       env: telegramEnv,
@@ -459,6 +466,7 @@ async function handleFetch(
             };
           },
         },
+        imageImportProvider,
       },
     });
   }

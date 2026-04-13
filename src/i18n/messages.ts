@@ -3,6 +3,7 @@ import type { SupportedAsset, SupportedLocale } from "../domain/types.js";
 export interface LocaleMessages {
   localeName: string;
   buttons: {
+    importImage: string;
     trackBtc: string;
     trackEth: string;
     trackBoth: string;
@@ -13,6 +14,9 @@ export interface LocaleMessages {
     status: string;
     lastDecision: string;
     hourlyHealth: string;
+    confirmSave: string;
+    retryImport: string;
+    cancelImport: string;
   };
   booleans: {
     yes: string;
@@ -38,6 +42,7 @@ export interface LocaleMessages {
     invalidPositionUsage: string;
     invalidSleepUsage: string;
     invalidFreshStartUsage: string;
+    imageImportUsage: string;
     cashRecorded(amount: string): string;
     sleepUpdated(enabled: boolean): string;
     freshStartRecorded(scope: string): string;
@@ -132,6 +137,24 @@ export interface LocaleMessages {
     stateReminderStoredState: string;
     stateReminderRecordOnly: string;
   };
+  importFlow: {
+    startPrompt: string;
+    unavailable: string;
+    unsupportedMedia: string;
+    unsupportedKind: string;
+    lowConfidence: string;
+    failed(detail: string): string;
+    confirmTitle: string;
+    confirmCash(value: string): string;
+    confirmAsset(asset: SupportedAsset, value: string): string;
+    noDetectedValues: string;
+    confirmHint: string;
+    saved: string;
+    cancelled: string;
+    retryPrompt: string;
+    notFound: string;
+    expired: string;
+  };
   temporaryPolicy: {
     recordedStateNeedsCorrection: string;
     manualSetupIncomplete: string;
@@ -148,6 +171,7 @@ export interface LocaleMessages {
 const en: LocaleMessages = {
   localeName: "English",
   buttons: {
+    importImage: "Import image",
     trackBtc: "Track BTC",
     trackEth: "Track ETH",
     trackBoth: "Track both",
@@ -158,6 +182,9 @@ const en: LocaleMessages = {
     status: "Status",
     lastDecision: "Last decision",
     hourlyHealth: "Hourly health",
+    confirmSave: "Confirm save",
+    retryImport: "Try again",
+    cancelImport: "Cancel",
   },
   booleans: {
     yes: "yes",
@@ -178,7 +205,8 @@ const en: LocaleMessages = {
       "PositionGuard is a BTC/ETH spot position coach.",
       "It is not an auto-trading bot.",
       "",
-      "Choose which assets you want to track with the buttons below, then record cash and spot inventory manually.",
+      "The easiest path is to import a portfolio screenshot with the button below.",
+      "You can still record cash and spot inventory manually if needed.",
       "Use /help to see the available commands.",
     ].join("\n"),
     help: [
@@ -188,6 +216,7 @@ const en: LocaleMessages = {
       "/language <ko|en> - choose your bot language",
       "/status - view stored state summary",
       "/track <BTC|ETH|BOTH> - choose which spot assets to track",
+      "/importimage - import a portfolio screenshot and confirm before saving",
       "/setcash <amount> - record available cash",
       "/setposition <BTC|ETH> <quantity> <average-entry-price> - record spot inventory only",
       "/lastdecision - inspect the latest hourly decision",
@@ -216,6 +245,7 @@ const en: LocaleMessages = {
       "This clears recent deferred confirmation, recent exit, and alert/reminder memory for the chosen scope only.",
       "Stored cash and spot records are kept.",
     ].join("\n"),
+    imageImportUsage: "Use /importimage or the Import image button, then send a screenshot as a photo or document.",
     cashRecorded: (amount) => `Cash recorded: ${amount}.`,
     sleepUpdated: (enabled) => `Sleep mode is now ${enabled ? "on" : "off"}.`,
     freshStartRecorded: (scope) => [
@@ -235,8 +265,8 @@ const en: LocaleMessages = {
     recordPositionExample: (asset) =>
       asset === "BTC" ? "Example: /setposition BTC 0.25 95000000" : "Example: /setposition ETH 1.2 3500000",
     noStoredSetup: "No stored setup yet.",
-    noStoredSetupHint: "Use the buttons below to choose tracked assets, then record cash and spot inventory manually.",
-    statusPrompt: "Choose tracked assets with the buttons below, then record BTC or ETH inventory if you want them coached.",
+    noStoredSetupHint: "Use Import image to pull values from a portfolio screenshot, or record cash and spot inventory manually.",
+    statusPrompt: "Use Import image for a portfolio screenshot, or update cash and spot inventory manually if needed.",
     noAlertYet: "No alert record is available yet. ACTION_NEEDED alerts are only sent when the hourly loop records one.",
     lastAlertTitle: "Last alert:",
     alertReason: (reason) => `Reason: ${reason}`,
@@ -329,6 +359,28 @@ const en: LocaleMessages = {
     stateReminderStoredState: "PositionGuard only sees your stored manual state.",
     stateReminderRecordOnly: "This is record-only guidance.",
   },
+  importFlow: {
+    startPrompt: [
+      "Send a portfolio screenshot as a photo or document.",
+      "This first pass supports current asset/cash snapshots.",
+      "PositionGuard will extract values, ask for confirmation, and only then update your record.",
+    ].join("\n"),
+    unavailable: "Image import is not configured yet. Use /setcash and /setposition for now.",
+    unsupportedMedia: "Please send an image screenshot as a Telegram photo or image document.",
+    unsupportedKind: "That image looks like trade history or an unsupported screen. For now, import a portfolio snapshot screen.",
+    lowConfidence: "I could not read that screenshot confidently enough.",
+    failed: (detail) => `Image import failed: ${detail}`,
+    confirmTitle: "I read this as a portfolio snapshot:",
+    confirmCash: (value) => `Cash: ${value} KRW`,
+    confirmAsset: (asset, value) => `${asset}: ${value}`,
+    noDetectedValues: "No cash or BTC/ETH holdings were detected confidently.",
+    confirmHint: "If this looks correct, confirm save. Otherwise, try again with a clearer screenshot.",
+    saved: "Imported values were saved to your manual record.",
+    cancelled: "Image import was cancelled.",
+    retryPrompt: "Please send the portfolio screenshot again. A clearer full-screen image works best.",
+    notFound: "That pending image import could not be found anymore.",
+    expired: "That pending image import has expired. Please send the screenshot again.",
+  },
   temporaryPolicy: {
     recordedStateNeedsCorrection: "Recorded state needs manual correction.",
     manualSetupIncomplete: "Manual setup is incomplete.",
@@ -345,6 +397,7 @@ const en: LocaleMessages = {
 const ko: LocaleMessages = {
   localeName: "\uD55C\uAD6D\uC5B4",
   buttons: {
+    importImage: "이미지로 기록",
     trackBtc: "BTC \uCD94\uC801",
     trackEth: "ETH \uCD94\uC801",
     trackBoth: "\uB458 \uB2E4 \uCD94\uC801",
@@ -355,6 +408,9 @@ const ko: LocaleMessages = {
     status: "\uC0C1\uD0DC",
     lastDecision: "\uCD5C\uADFC \uACB0\uC815",
     hourlyHealth: "\uC2DC\uAC04\uBCC4 \uC0C1\uD0DC",
+    confirmSave: "확인 저장",
+    retryImport: "다시 보내기",
+    cancelImport: "취소",
   },
   booleans: {
     yes: "\uC608",
@@ -375,7 +431,8 @@ const ko: LocaleMessages = {
       "PositionGuard\uB294 BTC/ETH \uD604\uBB3C \uD3EC\uC9C0\uC158 \uCF54\uCE58 \uBD07\uC785\uB2C8\uB2E4.",
       "\uC790\uB3D9\uB9E4\uB9E4 \uBD07\uC774 \uC544\uB2D9\uB2C8\uB2E4.",
       "",
-      "\uC544\uB798 \uBC84\uD2BC\uC73C\uB85C \uCD94\uC801\uD560 \uC790\uC0B0\uC744 \uACE0\uB978 \uB4A4, \uBCF4\uC720 \uD604\uAE08\uACFC \uD604\uBB3C \uBCF4\uC720 \uC0C1\uD0DC\uB97C \uC9C1\uC811 \uAE30\uB85D\uD574 \uC8FC\uC138\uC694.",
+      "가장 쉬운 방법은 아래 버튼으로 자산현황 이미지를 가져오는 것입니다.",
+      "필요하면 현금과 현물 보유 상태를 직접 기록할 수도 있습니다.",
       "\uC0AC\uC6A9 \uAC00\uB2A5\uD55C \uBA85\uB839\uC740 /help \uC5D0\uC11C \uBCFC \uC218 \uC788\uC2B5\uB2C8\uB2E4.",
     ].join("\n"),
     help: [
@@ -385,6 +442,7 @@ const ko: LocaleMessages = {
       "/language <ko|en> - \uBD07 \uC5B8\uC5B4 \uC120\uD0DD",
       "/status - \uC800\uC7A5\uB41C \uC0C1\uD0DC \uC694\uC57D \uBCF4\uAE30",
       "/track <BTC|ETH|BOTH> - \uCD94\uC801\uD560 \uD604\uBB3C \uC790\uC0B0 \uC120\uD0DD",
+      "/importimage - 자산현황 이미지를 읽고 확인 후 저장",
       "/setcash <amount> - \uC0AC\uC6A9 \uAC00\uB2A5 \uD604\uAE08 \uAE30\uB85D",
       "/setposition <BTC|ETH> <quantity> <average-entry-price> - \uD604\uBB3C \uBCF4\uC720 \uC0C1\uD0DC\uB9CC \uAE30\uB85D",
       "/lastdecision - \uCD5C\uADFC \uC2DC\uAC04\uBCC4 \uACB0\uC815 \uD655\uC778",
@@ -413,6 +471,7 @@ const ko: LocaleMessages = {
       "\uC120\uD0DD\uD55C \uBC94\uC704\uC758 recent exit, deferred confirmation, \uC54C\uB9BC/\uB9AC\uB9C8\uC778\uB354 \uBA54\uBAA8\uB9AC\uB9CC \uCD08\uAE30\uD654\uD569\uB2C8\uB2E4.",
       "\uD604\uAE08\uACFC \uD604\uBB3C \uAE30\uB85D\uC740 \uC720\uC9C0\uB429\uB2C8\uB2E4.",
     ].join("\n"),
+    imageImportUsage: "이미지로 기록 버튼 또는 /importimage를 보낸 뒤, 자산현황 이미지를 photo 또는 document로 보내주세요.",
     cashRecorded: (amount) => `\uD604\uAE08 \uAE30\uB85D \uC644\uB8CC: ${amount}.`,
     sleepUpdated: (enabled) => `\uC218\uBA74 \uBAA8\uB4DC\uB294 \uC774\uC81C ${enabled ? "\uCF1C\uC9D0" : "\uAEBC\uC9D0"} \uC0C1\uD0DC\uC785\uB2C8\uB2E4.`,
     freshStartRecorded: (scope) => [
@@ -432,8 +491,8 @@ const ko: LocaleMessages = {
     recordPositionExample: (asset) =>
       asset === "BTC" ? "\uC608\uC2DC: /setposition BTC 0.25 95000000" : "\uC608\uC2DC: /setposition ETH 1.2 3500000",
     noStoredSetup: "\uC544\uC9C1 \uC800\uC7A5\uB41C \uC124\uC815\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.",
-    noStoredSetupHint: "\uC544\uB798 \uBC84\uD2BC\uC73C\uB85C \uCD94\uC801 \uC790\uC0B0\uC744 \uACE0\uB978 \uB4A4, \uD604\uAE08\uACFC \uD604\uBB3C \uBCF4\uC720 \uC0C1\uD0DC\uB97C \uC9C1\uC811 \uAE30\uB85D\uD574 \uC8FC\uC138\uC694.",
-    statusPrompt: "\uC544\uB798 \uBC84\uD2BC\uC73C\uB85C \uCD94\uC801 \uC790\uC0B0\uC744 \uACE0\uB978 \uB4A4, \uCF54\uCE6D\uC744 \uBC1B\uACE0 \uC2F6\uC740 BTC \uB610\uB294 ETH \uBCF4\uC720 \uC0C1\uD0DC\uB97C \uAE30\uB85D\uD574 \uC8FC\uC138\uC694.",
+    noStoredSetupHint: "이미지로 기록 버튼으로 자산현황 값을 가져오거나, 현금과 현물 상태를 직접 기록해 주세요.",
+    statusPrompt: "자산현황 이미지를 가져오거나 필요하면 현금과 BTC/ETH 상태를 직접 수정해 주세요.",
     noAlertYet: "\uC544\uC9C1 \uC54C\uB9BC \uAE30\uB85D\uC774 \uC5C6\uC2B5\uB2C8\uB2E4. ACTION_NEEDED \uC54C\uB9BC\uC740 \uC2DC\uAC04\uBCC4 \uB8E8\uD504\uC5D0\uC11C \uC2E4\uC81C\uB85C \uAE30\uB85D\uB420 \uB54C\uB9CC \uC804\uC1A1\uB429\uB2C8\uB2E4.",
     lastAlertTitle: "\uB9C8\uC9C0\uB9C9 \uC54C\uB9BC:",
     alertReason: (reason) => `\uC0AC\uC720: ${reason}`,
@@ -525,6 +584,28 @@ const ko: LocaleMessages = {
     stateReminderCash: "\uC0AC\uC6A9 \uAC00\uB2A5 \uD604\uAE08\uC774 \uBC14\uB00C\uC5C8\uB2E4\uBA74 /setcash \uB85C \uAC31\uC2E0\uD574 \uC8FC\uC138\uC694.",
     stateReminderStoredState: "PositionGuard\uB294 \uC800\uC7A5\uB41C \uC218\uB3D9 \uC0C1\uD0DC\uB9CC \uBCFC \uC218 \uC788\uC2B5\uB2C8\uB2E4.",
     stateReminderRecordOnly: "\uC774 \uC548\uB0B4\uB294 \uAE30\uB85D \uC804\uC6A9\uC785\uB2C8\uB2E4.",
+  },
+  importFlow: {
+    startPrompt: [
+      "자산현황 이미지를 photo 또는 document로 보내주세요.",
+      "1차 구현에서는 현재 자산/현금 스냅샷 화면만 지원합니다.",
+      "PositionGuard가 값을 읽은 뒤 저장 전에 먼저 확인을 받습니다.",
+    ].join("\n"),
+    unavailable: "이미지 가져오기 기능이 아직 설정되지 않았습니다. 지금은 /setcash 와 /setposition 을 사용해 주세요.",
+    unsupportedMedia: "이미지 스크린샷을 Telegram photo 또는 image document 형식으로 보내주세요.",
+    unsupportedKind: "거래내역 화면이거나 아직 지원하지 않는 화면으로 보입니다. 지금은 자산현황 화면만 지원합니다.",
+    lowConfidence: "이미지를 충분히 자신 있게 읽지 못했습니다.",
+    failed: (detail) => `이미지 가져오기에 실패했습니다: ${detail}`,
+    confirmTitle: "다음과 같이 자산현황으로 읽었습니다:",
+    confirmCash: (value) => `현금: ${value} KRW`,
+    confirmAsset: (asset, value) => `${asset}: ${value}`,
+    noDetectedValues: "현금 또는 BTC/ETH 보유값을 확실하게 읽지 못했습니다.",
+    confirmHint: "맞다면 확인 저장을 눌러 주세요. 아니면 더 선명한 이미지로 다시 보내 주세요.",
+    saved: "가져온 값이 수동 기록에 저장되었습니다.",
+    cancelled: "이미지 가져오기를 취소했습니다.",
+    retryPrompt: "자산현황 이미지를 다시 보내주세요. 전체 화면이 선명할수록 더 잘 읽습니다.",
+    notFound: "확인 대기 중인 이미지 기록을 찾지 못했습니다.",
+    expired: "확인 대기 중이던 이미지 기록이 만료되었습니다. 이미지를 다시 보내주세요.",
   },
   temporaryPolicy: {
     recordedStateNeedsCorrection: "\uAE30\uB85D\uB41C \uC0C1\uD0DC\uB97C \uC218\uB3D9\uC73C\uB85C \uC218\uC815\uD574\uC57C \uD569\uB2C8\uB2E4.",

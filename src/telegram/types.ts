@@ -1,5 +1,6 @@
 import type { SupportedLocale } from "../domain/types.js";
 import type { StrategyMemoryResetScope } from "../types/persistence.js";
+import type { TelegramImageImportProvider } from "../image-import/types.js";
 
 export type TelegramChatType = 'private' | 'group' | 'supergroup' | 'channel';
 
@@ -27,13 +28,32 @@ export interface TelegramMessageEntity {
   length: number;
 }
 
+export interface TelegramPhotoSize {
+  file_id: string;
+  file_unique_id?: string;
+  width: number;
+  height: number;
+  file_size?: number;
+}
+
+export interface TelegramDocument {
+  file_id: string;
+  file_unique_id?: string;
+  file_name?: string;
+  mime_type?: string;
+  file_size?: number;
+}
+
 export interface TelegramMessage {
   message_id: number;
   date: number;
   chat: TelegramChat;
   from?: TelegramUser;
   text?: string;
+  caption?: string;
   entities?: TelegramMessageEntity[];
+  photo?: TelegramPhotoSize[];
+  document?: TelegramDocument;
 }
 
 export interface TelegramCallbackQuery {
@@ -192,6 +212,7 @@ export interface TelegramRouterDependencies {
   notificationProvider?: TelegramNotificationProvider;
   onboardingProvider?: TelegramOnboardingProvider;
   inspectionProvider?: TelegramInspectionProvider;
+  imageImportProvider?: TelegramImageImportProvider;
 }
 
 export interface TelegramWebhookContext {
@@ -207,6 +228,10 @@ export type TelegramCallbackAction =
   | { kind: 'setup:track'; trackedAssets: TelegramTrackedAssetsSelection }
   | { kind: 'setup:cash' }
   | { kind: 'setup:position'; asset: "BTC" | "ETH" }
+  | { kind: 'import:start' }
+  | { kind: 'import:confirm'; importId: number }
+  | { kind: 'import:retry'; importId: number }
+  | { kind: 'import:cancel'; importId: number }
   | { kind: 'inspect:lastdecision' }
   | { kind: 'inspect:hourlyhealth' };
 
@@ -242,4 +267,12 @@ export interface TelegramCommandContext {
   command: string;
   args: string[];
   replyToCallback?: TelegramCallbackQuery;
+}
+
+export interface TelegramMediaMessageContext {
+  update: TelegramUpdate;
+  chatId: number;
+  userId: number;
+  profile: TelegramUserProfile;
+  message: TelegramMessage;
 }

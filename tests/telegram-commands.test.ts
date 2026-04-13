@@ -1,7 +1,12 @@
-import { buildActionNeededAlertText, routeCommand } from "../src/telegram/commands.js";
+import {
+  buildActionNeededAlertText,
+  routeCommand,
+  routeMediaMessage,
+} from "../src/telegram/commands.js";
 import type {
   TelegramCommandContext,
   TelegramInspectionProvider,
+  TelegramMediaMessageContext,
   TelegramOnboardingProvider,
 } from "../src/telegram/types.js";
 import { assert, assertEqual } from "./test-helpers.js";
@@ -36,6 +41,70 @@ const deps = {
       return {
         scope,
         createdAt: "2026-01-01T04:00:00.000Z",
+      };
+    },
+  },
+  imageImportProvider: {
+    isConfigured() {
+      return true;
+    },
+    async beginImport(input: { telegramUserId: number }) {
+      calls.push({ kind: "beginImport", payload: input });
+      return {
+        kind: "READY" as const,
+        importId: 77,
+        expiresAt: "2026-01-01T05:00:00.000Z",
+      };
+    },
+    async processMedia(input: unknown) {
+      calls.push({ kind: "processMedia", payload: input });
+      return {
+        kind: "PENDING_CONFIRMATION" as const,
+        importId: 78,
+        confidence: 0.91,
+        summary: "Portfolio snapshot detected.",
+        warnings: [],
+        expiresAt: "2026-01-01T05:10:00.000Z",
+        portfolio: {
+          hasCash: true,
+          cashKrw: 541736,
+          hasBtc: true,
+          btcQuantity: 0.00277852,
+          btcAverageEntryPrice: 106166978,
+          hasEth: true,
+          ethQuantity: 0.04976593,
+          ethAverageEntryPrice: 3280890,
+        },
+      };
+    },
+    async confirmImport(input: { telegramUserId: number; importId: number }) {
+      calls.push({ kind: "confirmImport", payload: input });
+      return {
+        kind: "APPLIED" as const,
+        importId: input.importId,
+        confirmedAt: "2026-01-01T05:01:00.000Z",
+        applied: {
+          cash: true,
+          btc: true,
+          eth: false,
+        },
+        portfolio: {
+          hasCash: true,
+          cashKrw: 541736,
+          hasBtc: true,
+          btcQuantity: 0.00277852,
+          btcAverageEntryPrice: 106166978,
+          hasEth: false,
+          ethQuantity: 0,
+          ethAverageEntryPrice: 0,
+        },
+      };
+    },
+    async rejectImport(input: { telegramUserId: number; importId: number }) {
+      calls.push({ kind: "rejectImport", payload: input });
+      return {
+        kind: "REJECTED" as const,
+        importId: input.importId,
       };
     },
   },
@@ -180,10 +249,11 @@ if (startAction && startAction.kind === "sendMessage" && startAction.replyMarkup
   startCallbackData = startAction.replyMarkup.inline_keyboard.flat().map((button) => button.callback_data);
 }
 
-  assert(
+assert(
     startCallbackData.includes("setup:track:btc") &&
       startCallbackData.includes("setup:track:eth") &&
       startCallbackData.includes("setup:track:both") &&
+      startCallbackData.includes("import:start") &&
       startCallbackData.includes("setup:progress") &&
       startCallbackData.includes("inspect:lastdecision") &&
       startCallbackData.includes("inspect:hourlyhealth"),
@@ -197,7 +267,7 @@ assert(
 assert(
   startKoActions[0]?.kind === "sendMessage" &&
     startKoActions[0].text.includes("\uD604\uBB3C \uD3EC\uC9C0\uC158 \uCF54\uCE58 \uBD07") &&
-    startKoActions[0].replyMarkup?.inline_keyboard[0]?.[0]?.text === "BTC \uCD94\uC801",
+    startKoActions[0].replyMarkup?.inline_keyboard[0]?.[0]?.text === "\uC774\uBBF8\uC9C0\uB85C \uAE30\uB85D",
   "/start should render Korean copy and button labels for Korean users.",
 );
 
@@ -217,6 +287,7 @@ const helpKoActions = await routeCommand(
 assert(
   helpKoActions[0]?.kind === "sendMessage" &&
     helpKoActions[0].text.includes("/language <ko|en>") &&
+    helpKoActions[0].text.includes("/importimage") &&
     helpKoActions[0].text.includes("/freshstart <BTC|ETH|ALL> confirm") &&
     helpKoActions[0].text.includes("\uBD07 \uC5B8\uC5B4 \uC120\uD0DD"),
   "/help should render Korean help copy including /language and /freshstart.",
@@ -409,6 +480,159 @@ assert(
 assert(
   calls.some((call) => call.kind === "setSleepMode" && (call.payload as { isSleeping?: boolean }).isSleeping === true),
   "sleep callback should still toggle sleep mode through the callback path.",
+);
+
+const importStartActions = await routeCommand(
+  {
+    ...baseContext,
+    command: "importimage",
+    text: "/importimage",
+    args: [],
+  },
+  deps,
+);
+
+assert(
+  calls.some((call) => call.kind === "beginImport"),
+  "/importimage should begin a pending image-import flow.",
+);
+assert(
+  importStartActions[0]?.kind === "sendMessage" &&
+    importStartActions[0].text.includes("portfolio screenshot"),
+  "/importimage should guide the user toward sending a portfolio screenshot.",
+);
+
+const importCallbackActions = await routeCommand(
+  {
+    ...baseContext,
+    command: "callback",
+    text: "import:start",
+    args: [],
+    replyToCallback: {
+      id: "cb-import-start",
+      from: { id: 100, first_name: "Test" },
+      data: "import:start",
+      message: {
+        message_id: 5,
+        date: 1,
+        chat: { id: 200, type: "private" },
+        from: { id: 100, first_name: "Test" },
+        text: "Import",
+      },
+    },
+  },
+  deps,
+);
+
+assertEqual(
+  importCallbackActions[0]?.kind,
+  "answerCallbackQuery",
+  "import:start callback should acknowledge the button press first.",
+);
+assert(
+  importCallbackActions.some(
+    (action) => action.kind === "sendMessage" && action.text.includes("portfolio screenshot"),
+  ),
+  "import:start callback should send image-import guidance.",
+);
+
+const importConfirmActions = await routeCommand(
+  {
+    ...baseContext,
+    command: "callback",
+    text: "import:confirm:78",
+    args: [],
+    replyToCallback: {
+      id: "cb-import-confirm",
+      from: { id: 100, first_name: "Test" },
+      data: "import:confirm:78",
+      message: {
+        message_id: 6,
+        date: 1,
+        chat: { id: 200, type: "private" },
+        from: { id: 100, first_name: "Test" },
+        text: "Confirm import",
+      },
+    },
+  },
+  deps,
+);
+
+assert(
+  calls.some(
+    (call) => call.kind === "confirmImport" && (call.payload as { importId?: number }).importId === 78,
+  ),
+  "import confirm callback should call the image-import provider with the pending import id.",
+);
+assert(
+  importConfirmActions.some(
+    (action) => action.kind === "sendMessage" && action.text.includes("Imported values were saved"),
+  ),
+  "import confirm callback should send a saved confirmation message.",
+);
+
+const importRetryActions = await routeCommand(
+  {
+    ...baseContext,
+    command: "callback",
+    text: "import:retry:78",
+    args: [],
+    replyToCallback: {
+      id: "cb-import-retry",
+      from: { id: 100, first_name: "Test" },
+      data: "import:retry:78",
+      message: {
+        message_id: 7,
+        date: 1,
+        chat: { id: 200, type: "private" },
+        from: { id: 100, first_name: "Test" },
+        text: "Retry import",
+      },
+    },
+  },
+  deps,
+);
+
+assert(
+  calls.some(
+    (call) => call.kind === "rejectImport" && (call.payload as { importId?: number }).importId === 78,
+  ),
+  "import retry should cancel the previous pending import first.",
+);
+assert(
+  importRetryActions.some(
+    (action) => action.kind === "sendMessage" && action.text.includes("Please send the portfolio screenshot again"),
+  ),
+  "import retry should prompt the user to send the screenshot again.",
+);
+
+const importCancelActions = await routeCommand(
+  {
+    ...baseContext,
+    command: "callback",
+    text: "import:cancel:79",
+    args: [],
+    replyToCallback: {
+      id: "cb-import-cancel",
+      from: { id: 100, first_name: "Test" },
+      data: "import:cancel:79",
+      message: {
+        message_id: 8,
+        date: 1,
+        chat: { id: 200, type: "private" },
+        from: { id: 100, first_name: "Test" },
+        text: "Cancel import",
+      },
+    },
+  },
+  deps,
+);
+
+assert(
+  importCancelActions.some(
+    (action) => action.kind === "sendMessage" && action.text.includes("cancelled"),
+  ),
+  "import cancel should confirm cancellation to the user.",
 );
 
 const invalidFreshStartActions = await routeCommand(
@@ -675,4 +899,53 @@ assert(
     nextStep: "Use /setposition for inventory changes and /setcash if available cash changed.",
   }).includes("ACTION NEEDED: BTC state update reminder is needed"),
   "State-update reminder alerts should render a dedicated non-execution headline.",
+);
+
+const mediaActions = await routeMediaMessage(
+  {
+    update: { update_id: 99 },
+    chatId: 200,
+    userId: 100,
+    profile: {
+      telegramUserId: 100,
+      telegramChatId: 200,
+      username: "tester",
+      displayName: "Test User",
+    },
+    message: {
+      message_id: 15,
+      date: 1,
+      chat: { id: 200, type: "private" },
+      from: { id: 100, first_name: "Test" },
+      photo: [
+        {
+          file_id: "photo-small",
+          width: 100,
+          height: 100,
+        },
+        {
+          file_id: "photo-large",
+          width: 1200,
+          height: 1600,
+        },
+      ],
+    },
+  } satisfies TelegramMediaMessageContext,
+  deps,
+);
+
+assert(
+  calls.some(
+    (call) =>
+      call.kind === "processMedia" &&
+      (call.payload as { telegramFileId?: string }).telegramFileId === "photo-large",
+  ),
+  "routeMediaMessage should pass the highest-resolution Telegram photo to the image-import provider.",
+);
+const mediaAction = mediaActions[0];
+assert(
+  mediaAction?.kind === "sendMessage" &&
+    mediaAction.text.includes("Portfolio snapshot detected.") &&
+    mediaAction.replyMarkup?.inline_keyboard[0]?.[0]?.callback_data === "import:confirm:78",
+  "routeMediaMessage should return a confirmation message with confirm/retry/cancel buttons.",
 );
