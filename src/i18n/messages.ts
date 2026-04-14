@@ -242,7 +242,7 @@ const en: LocaleMessages = {
       "/lastdecision - inspect the latest hourly decision",
       "/hourlyhealth - inspect recent hourly processing health",
       "/lastalert - inspect the last recorded alert state",
-      "/freshstart <BTC|ETH|ALL> confirm - clear recent strategy memory for a fresh start",
+      "/freshstart <BTC|ETH|ALL> confirm - reset records for a true fresh start",
       "/sleep on - pause alerts",
       "/sleep off - resume alerts",
       "",
@@ -262,18 +262,27 @@ const en: LocaleMessages = {
     invalidFreshStartUsage: [
       "Usage: /freshstart <BTC|ETH|ALL> confirm",
       "Example: /freshstart BTC confirm",
-      "This clears recent deferred confirmation, recent exit, and alert/reminder memory for the chosen scope only.",
-      "Stored cash and spot records are kept.",
+      "BTC or ETH resets that asset record to 0 and clears recent judgment carry-over for that asset.",
+      "ALL resets cash, BTC, and ETH records to 0 and clears recent judgment carry-over.",
     ].join("\n"),
     imageImportUsage: "Use /importimage or the Import image button, then send a screenshot as a photo or document.",
     cashRecorded: (amount) => `Cash recorded: ${amount}.`,
     sleepUpdated: (enabled) => `Sleep mode is now ${enabled ? "on" : "off"}.`,
-    freshStartRecorded: (scope) => [
-      `Fresh-start marker recorded for ${scope}.`,
-      "Stored cash and spot records were kept.",
-      "Recent deferred confirmation, recent exit, and alert/reminder memory will restart from now.",
-      "This is record-only guidance.",
-    ].join("\n"),
+    freshStartRecorded: (scope) =>
+      scope === "ALL"
+        ? [
+            "Fresh start recorded for ALL.",
+            "Cash, BTC, and ETH records were reset to 0.",
+            "Recent deferred confirmation, recent exit, and alert/reminder memory will restart from now.",
+            "This is record-only guidance.",
+          ].join("\n")
+        : [
+            `Fresh start recorded for ${scope}.`,
+            `The stored ${scope} record was reset to 0.`,
+            "Other asset records and cash were kept.",
+            "Recent deferred confirmation, recent exit, and alert/reminder memory will restart from now.",
+            "This is record-only guidance.",
+          ].join("\n"),
     trackedAssetsRecorded: (assets, onboarding) =>
       [`Tracked assets recorded: ${assets}.`, onboarding].join("\n"),
     trackedAssetsChosen: (assets, nextSteps) =>
@@ -478,7 +487,7 @@ const ko: LocaleMessages = {
       "/lastdecision - \uCD5C\uADFC \uC2DC\uAC04\uBCC4 \uACB0\uC815 \uD655\uC778",
       "/hourlyhealth - \uCD5C\uADFC \uC2DC\uAC04\uBCC4 \uCC98\uB9AC \uC0C1\uD0DC \uD655\uC778",
       "/lastalert - \uB9C8\uC9C0\uB9C9 \uC54C\uB9BC \uC0C1\uD0DC \uD655\uC778",
-      "/freshstart <BTC|ETH|ALL> confirm - \uCD5C\uADFC \uC804\uB7B5 \uBA54\uBAA8\uB9AC \uCD08\uAE30\uD654",
+      "/freshstart <BTC|ETH|ALL> confirm - \uC9C4\uC9DC \uB2E4\uC2DC \uC2DC\uC791\uC744 \uC704\uD55C \uAE30\uB85D \uCD08\uAE30\uD654",
       "/sleep on - \uC54C\uB9BC \uC77C\uC2DC\uC815\uC9C0",
       "/sleep off - \uC54C\uB9BC \uC7AC\uAC1C",
       "",
@@ -498,18 +507,27 @@ const ko: LocaleMessages = {
     invalidFreshStartUsage: [
       "\uC0AC\uC6A9\uBC95: /freshstart <BTC|ETH|ALL> confirm",
       "\uC608\uC2DC: /freshstart BTC confirm",
-      "\uC120\uD0DD\uD55C \uBC94\uC704\uC758 recent exit, deferred confirmation, \uC54C\uB9BC/\uB9AC\uB9C8\uC778\uB354 \uBA54\uBAA8\uB9AC\uB9CC \uCD08\uAE30\uD654\uD569\uB2C8\uB2E4.",
-      "\uD604\uAE08\uACFC \uD604\uBB3C \uAE30\uB85D\uC740 \uC720\uC9C0\uB429\uB2C8\uB2E4.",
+      "BTC \uB610\uB294 ETH\uB97C \uC120\uD0DD\uD558\uBA74 \uD574\uB2F9 \uCF54\uC778 \uAE30\uB85D\uC744 0\uC73C\uB85C \uB9CC\uB4E4\uACE0 \uCD5C\uADFC \uD310\uB2E8 \uC601\uD5A5\uC744 \uB04A\uC2B5\uB2C8\uB2E4.",
+      "ALL\uC744 \uC120\uD0DD\uD558\uBA74 \uD604\uAE08, BTC, ETH \uAE30\uB85D\uC744 \uBAA8\uB450 0\uC73C\uB85C \uCD08\uAE30\uD654\uD558\uACE0 \uC0C8\uB85C \uC2DC\uC791\uD569\uB2C8\uB2E4.",
     ].join("\n"),
     imageImportUsage: "이미지로 기록 버튼 또는 /importimage를 보낸 뒤, 자산현황 이미지를 photo 또는 document로 보내주세요.",
     cashRecorded: (amount) => `\uD604\uAE08 \uAE30\uB85D \uC644\uB8CC: ${amount}.`,
     sleepUpdated: (enabled) => `\uC218\uBA74 \uBAA8\uB4DC\uB294 \uC774\uC81C ${enabled ? "\uCF1C\uC9D0" : "\uAEBC\uC9D0"} \uC0C1\uD0DC\uC785\uB2C8\uB2E4.`,
-    freshStartRecorded: (scope) => [
-      `${scope} \uBC94\uC704\uC5D0 \uB300\uD55C fresh-start marker\uB97C \uAE30\uB85D\uD588\uC2B5\uB2C8\uB2E4.`,
-      "\uD604\uAE08\uACFC \uD604\uBB3C \uAE30\uB85D\uC740 \uADF8\uB300\uB85C \uC720\uC9C0\uB429\uB2C8\uB2E4.",
-      "\uC774\uC81C\uBD80\uD130 recent exit, deferred confirmation, \uC54C\uB9BC/\uB9AC\uB9C8\uC778\uB354 \uBA54\uBAA8\uB9AC\uB294 \uC0C8\uB85C \uACC4\uC0B0\uB429\uB2C8\uB2E4.",
-      "\uC774 \uC548\uB0B4\uB294 \uAE30\uB85D \uC804\uC6A9\uC785\uB2C8\uB2E4.",
-    ].join("\n"),
+    freshStartRecorded: (scope) =>
+      scope === "ALL"
+        ? [
+            "ALL \uB2E4\uC2DC \uC2DC\uC791\uC744 \uAE30\uB85D\uD588\uC2B5\uB2C8\uB2E4.",
+            "\uD604\uAE08, BTC, ETH \uAE30\uB85D\uC774 \uBAA8\uB450 0\uC73C\uB85C \uCD08\uAE30\uD654\uB418\uC5C8\uC2B5\uB2C8\uB2E4.",
+            "\uC774\uC81C\uBD80\uD130 recent exit, deferred confirmation, \uC54C\uB9BC/\uB9AC\uB9C8\uC778\uB354 \uBA54\uBAA8\uB9AC\uB294 \uC0C8\uB85C \uACC4\uC0B0\uB429\uB2C8\uB2E4.",
+            "\uC774 \uC548\uB0B4\uB294 \uAE30\uB85D \uC804\uC6A9\uC785\uB2C8\uB2E4.",
+          ].join("\n")
+        : [
+            `${scope} \uB2E4\uC2DC \uC2DC\uC791\uC744 \uAE30\uB85D\uD588\uC2B5\uB2C8\uB2E4.`,
+            `${scope} \uAE30\uB85D\uC740 0\uC73C\uB85C \uCD08\uAE30\uD654\uB418\uC5C8\uC2B5\uB2C8\uB2E4.`,
+            "\uB2E4\uB978 \uC790\uC0B0 \uAE30\uB85D\uACFC \uD604\uAE08\uC740 \uC720\uC9C0\uB429\uB2C8\uB2E4.",
+            "\uC774\uC81C\uBD80\uD130 recent exit, deferred confirmation, \uC54C\uB9BC/\uB9AC\uB9C8\uC778\uB354 \uBA54\uBAA8\uB9AC\uB294 \uC0C8\uB85C \uACC4\uC0B0\uB429\uB2C8\uB2E4.",
+            "\uC774 \uC548\uB0B4\uB294 \uAE30\uB85D \uC804\uC6A9\uC785\uB2C8\uB2E4.",
+          ].join("\n"),
     trackedAssetsRecorded: (assets, onboarding) =>
       [`\uCD94\uC801 \uC790\uC0B0 \uC800\uC7A5 \uC644\uB8CC: ${assets}.`, onboarding, "\uC8FC\uBB38\uC740 \uC2E4\uD589\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4."].join("\n"),
     trackedAssetsChosen: (assets, nextSteps) =>

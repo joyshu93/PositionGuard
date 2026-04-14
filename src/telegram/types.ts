@@ -115,6 +115,10 @@ export interface TelegramStateStore {
   }): Promise<void>;
   setSleepMode(telegramUserId: number, isSleeping: boolean): Promise<void>;
   setLocale?(telegramUserId: number, locale: SupportedLocale): Promise<SupportedLocale>;
+  freshStart?(
+    telegramUserId: number,
+    scope: StrategyMemoryResetScope,
+  ): Promise<{ scope: StrategyMemoryResetScope; createdAt: string } | void>;
   resetStrategyMemory?(
     telegramUserId: number,
     scope: StrategyMemoryResetScope,

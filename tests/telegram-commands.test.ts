@@ -728,13 +728,60 @@ const freshStartActions = await routeCommand(
 );
 
 assert(
+  calls.some(
+    (call) =>
+      call.kind === "setPosition" &&
+      (call.payload as { asset?: string; quantity?: number; averageEntryPrice?: number }).asset === "ETH" &&
+      (call.payload as { asset?: string; quantity?: number; averageEntryPrice?: number }).quantity === 0 &&
+      (call.payload as { asset?: string; quantity?: number; averageEntryPrice?: number }).averageEntryPrice === 0,
+  ),
+  "/freshstart ETH confirm should reset the ETH record to 0 before severing recent memory.",
+);
+assert(
   calls.some((call) => call.kind === "resetStrategyMemory" && (call.payload as { scope?: string }).scope === "ETH"),
   "/freshstart should persist a strategy-memory reset marker for the requested scope.",
 );
 assert(
   freshStartActions[0]?.kind === "sendMessage" &&
-    freshStartActions[0].text.includes("Fresh-start marker recorded for ETH"),
-  "/freshstart should confirm that recent strategy memory was severed without deleting stored records.",
+    freshStartActions[0].text.includes("The stored ETH record was reset to 0."),
+  "/freshstart should confirm that the selected asset record was reset for a real restart.",
+);
+
+const freshStartAllActions = await routeCommand(
+  {
+    ...baseContext,
+    command: "freshstart",
+    text: "/freshstart ALL confirm",
+    args: ["ALL", "confirm"],
+  },
+  deps,
+);
+
+assert(
+  calls.some((call) => call.kind === "setCash" && (call.payload as { cash?: number }).cash === 0),
+  "/freshstart ALL confirm should reset available cash to 0.",
+);
+assert(
+  calls.filter((call) => call.kind === "setPosition").some(
+    (call) =>
+      (call.payload as { asset?: string; quantity?: number }).asset === "BTC" &&
+      (call.payload as { asset?: string; quantity?: number }).quantity === 0,
+  ) &&
+    calls.filter((call) => call.kind === "setPosition").some(
+      (call) =>
+        (call.payload as { asset?: string; quantity?: number }).asset === "ETH" &&
+        (call.payload as { asset?: string; quantity?: number }).quantity === 0,
+    ),
+  "/freshstart ALL confirm should reset both BTC and ETH records to 0.",
+);
+assert(
+  calls.some((call) => call.kind === "resetStrategyMemory" && (call.payload as { scope?: string }).scope === "ALL"),
+  "/freshstart ALL confirm should still sever recent strategy memory after resetting stored state.",
+);
+assert(
+  freshStartAllActions[0]?.kind === "sendMessage" &&
+    freshStartAllActions[0].text.includes("Cash, BTC, and ETH records were reset to 0."),
+  "/freshstart ALL confirm should explain that all stored records were reset.",
 );
 
 const alertActions = await routeCommand(

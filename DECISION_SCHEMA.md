@@ -102,7 +102,7 @@ The current parity-oriented memory rules also use two explicit stateful inputs w
 
 - latest deferred-confirmation strategy snapshot from the most recent hourly decision log
 - recent manual-exit timing derived from user-reported position transitions rather than reconstructed only from prior hourly decisions
-- explicit fresh-start reset markers that intentionally sever older deferred-confirmation, recent-exit, and alert/reminder memory without deleting historical records
+- explicit fresh-start reset markers that intentionally sever older deferred-confirmation, recent-exit, and alert/reminder memory after the requested stored-state reset, while still preserving historical records
 
 ## Decision Output Shape
 The decision engine output should remain machine-friendly and easy to replace.

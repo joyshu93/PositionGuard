@@ -124,7 +124,7 @@ async function routeCallback(
   }
 
   if (action.kind === "menu:settings:restart") {
-    return [answer(callbackQuery.id), send(context.chatId, buildRestartMenuText(locale), buildRestartScopeKeyboard(locale))];
+    return [answer(callbackQuery.id), send(context.chatId, buildRestartMenuPromptText(locale), buildRestartScopeKeyboard(locale))];
   }
 
   if (action.kind === "language:set") {
@@ -132,7 +132,7 @@ async function routeCallback(
   }
 
   if (action.kind === "restart:scope") {
-    return [answer(callbackQuery.id), send(context.chatId, buildRestartConfirmText(locale, action.scope), buildRestartConfirmKeyboard(locale, action.scope))];
+    return [answer(callbackQuery.id), send(context.chatId, buildRestartConfirmPromptText(locale, action.scope), buildRestartConfirmKeyboard(locale, action.scope))];
   }
 
   if (action.kind === "restart:confirm") {
@@ -365,9 +365,7 @@ async function handleFreshStart(
     return [send(context.chatId, messages.command.invalidFreshStartUsage, buildOnboardingKeyboard(locale))];
   }
 
-  if (deps.stateStore?.resetStrategyMemory) {
-    await deps.stateStore.resetStrategyMemory(context.userId, scope);
-  }
+  await performFreshStart(context.userId, deps, scope);
 
   return [send(context.chatId, messages.command.freshStartRecorded(scope), buildOnboardingKeyboard(locale))];
 }
@@ -711,11 +709,97 @@ async function handleFreshStartConfirmation(
   locale: SupportedLocale,
   scope: StrategyMemoryResetScope,
 ): Promise<TelegramOutgoingAction[]> {
-  if (deps.stateStore?.resetStrategyMemory) {
-    await deps.stateStore.resetStrategyMemory(context.userId, scope);
-  }
+  await performFreshStart(context.userId, deps, scope);
 
   return [send(context.chatId, getMessages(locale).command.freshStartRecorded(scope), buildSettingsKeyboard(locale))];
+}
+
+async function performFreshStart(
+  telegramUserId: number,
+  deps: TelegramRouterDependencies,
+  scope: StrategyMemoryResetScope,
+): Promise<void> {
+  const stateStore = deps.stateStore;
+  if (!stateStore) {
+    return;
+  }
+
+  if (scope === "ALL") {
+    await stateStore.setCash(telegramUserId, 0);
+    await stateStore.setPosition({
+      telegramUserId,
+      asset: "BTC",
+      quantity: 0,
+      averageEntryPrice: 0,
+    });
+    await stateStore.setPosition({
+      telegramUserId,
+      asset: "ETH",
+      quantity: 0,
+      averageEntryPrice: 0,
+    });
+  } else {
+    await stateStore.setPosition({
+      telegramUserId,
+      asset: scope,
+      quantity: 0,
+      averageEntryPrice: 0,
+    });
+  }
+
+  if (stateStore.freshStart) {
+    await stateStore.freshStart(telegramUserId, scope);
+    return;
+  }
+
+  if (stateStore.resetStrategyMemory) {
+    await stateStore.resetStrategyMemory(telegramUserId, scope);
+  }
+}
+
+function buildRestartMenuPromptText(locale: SupportedLocale): string {
+  return locale === "ko"
+    ? [
+        "다시 시작 범위를 선택해 주세요.",
+        "BTC/ETH 다시 시작은 해당 코인 기록을 0으로 만들고 최근 판단 영향을 끊습니다.",
+        "전체 다시 시작은 현금, BTC, ETH 기록을 모두 0으로 만들고 새로 시작합니다.",
+      ].join("\n")
+    : [
+        "Choose a restart scope.",
+        "BTC or ETH restart resets that asset record to 0 and severs recent judgment carry-over for that asset.",
+        "ALL restart resets cash, BTC, and ETH records to 0 and starts over.",
+      ].join("\n");
+}
+
+function buildRestartConfirmPromptText(
+  locale: SupportedLocale,
+  scope: StrategyMemoryResetScope,
+): string {
+  if (scope === "ALL") {
+    return locale === "ko"
+      ? [
+          "전체를 다시 시작할까요?",
+          "현금, BTC, ETH 기록이 모두 0으로 초기화됩니다.",
+          "최근 판단 기억도 함께 끊고 새로 시작합니다.",
+        ].join("\n")
+      : [
+          "Restart everything?",
+          "Cash plus BTC and ETH records will all be reset to 0.",
+          "Recent judgment memory will also restart from here.",
+        ].join("\n");
+  }
+
+  return locale === "ko"
+    ? [
+        `${scope}를 다시 시작할까요?`,
+        `${scope} 기록은 0으로 초기화됩니다.`,
+        "다른 자산 기록과 현금은 유지되고, 최근 판단 영향은 끊습니다.",
+      ].join("\n")
+    : [
+        `Restart ${scope}?`,
+        `The stored ${scope} record will be reset to 0.`,
+        "Other asset records and cash stay the same, and recent judgment carry-over is severed.",
+      ].join("\n");
 }
 
 function buildHomeMenuText(locale: SupportedLocale): string {

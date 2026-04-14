@@ -222,7 +222,7 @@ The current stage should remain conservative and avoid noisy alerts.
 
 Manual position updates now also persist lightweight position-transition events. Those events stay record-only and let the strategy layer remember explicit manual `entry`, `add`, `reduce`, and `exit` changes without implying exchange execution.
 
-Explicit fresh-start resets now use lightweight strategy-memory reset markers. Those markers do not delete stored cash, stored spot records, or historical decision logs. Instead, they make the hourly strategy layer ignore older deferred-confirmation memory, older recent-exit memory, and older alert/reminder cooldown memory for the chosen scope from the reset point forward.
+Explicit fresh-start resets now create lightweight strategy-memory reset markers after the chosen stored records are reset. `BTC` or `ETH` fresh-start resets set that asset's stored spot record to `0`, while `ALL` fresh-start resets set stored cash plus BTC/ETH spot records to `0`. Historical decision logs remain intact, but the hourly strategy layer ignores older deferred-confirmation memory, older recent-exit memory, and older alert/reminder cooldown memory for the chosen scope from the reset point forward.
 
 For deploy-time debugging:
 
@@ -300,7 +300,7 @@ Current behavior:
 - `/hourlyhealth` inspects recent hourly processing health such as market-data failures, cooldown skips, sleep suppressions, setup blocks, and the latest reminder evaluation
 - `/sleep on` and `/sleep off` toggle alert quiet mode
 - `/lastalert` inspects the most recent sent alert snapshot and its cooldown window, including state-update reminders when they were the latest alert
-- `/freshstart <BTC|ETH|ALL> confirm` records a fresh-start marker that clears recent strategy memory for the chosen scope without deleting stored cash, stored spot records, or historical logs
+- `/freshstart <BTC|ETH|ALL> confirm` performs a true fresh start for the chosen scope: `BTC` or `ETH` resets that asset record to `0`, `ALL` resets stored cash plus BTC/ETH records to `0`, and the corresponding recent strategy memory is severed without deleting historical logs
 - decision summaries may now explicitly say `entry review`, `add-buy review`, or `partial reduction / exit plan review`, but they always remain non-execution coaching language
 - user-facing Telegram messages render in either Korean or English, but each message stays single-language
 
@@ -354,7 +354,7 @@ None of these messages execute anything. They remain coaching-only, scenario-bas
 
 Because the bot only sees stored manual state, a repeated market signal may later produce a separate state-update reminder. If you already bought, added, reduced, or sold outside the bot, update the record with `/setposition`. If your available cash changed, update it with `/setcash`.
 
-If you intentionally want PositionGuard to stop carrying recent strategy memory forward and treat the next hourly cycle as a fresh coaching start, use `/freshstart <BTC|ETH|ALL> confirm`. This is different from recording `0` values. Recording `0` cash or `0` quantity still represents a real stored state and may preserve recent manual-exit timing. `/freshstart` is the explicit record-only way to sever that recent memory without deleting historical logs.
+If you intentionally want PositionGuard to treat the next hourly cycle as a real fresh start, use `/freshstart <BTC|ETH|ALL> confirm`. `BTC` or `ETH` fresh start resets that asset record to `0` and severs recent strategy memory for that asset. `ALL` fresh start resets stored cash plus BTC/ETH records to `0` and severs the corresponding recent strategy memory. Historical logs are still kept for audit visibility.
 
 ## Roadmap
 
