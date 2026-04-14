@@ -3,17 +3,27 @@ import type { SupportedAsset, SupportedLocale } from "../domain/types.js";
 export interface LocaleMessages {
   localeName: string;
   buttons: {
+    recordMenu: string;
+    statusView: string;
+    inspectMenu: string;
+    settingsMenu: string;
     importImage: string;
+    directRecord: string;
     trackBtc: string;
     trackEth: string;
     trackBoth: string;
+    trackAssets: string;
     setupProgress: string;
+    language: string;
+    sleepMode: string;
+    restart: string;
     recordCash: string;
     recordBtc: string;
     recordEth: string;
     status: string;
     lastDecision: string;
     hourlyHealth: string;
+    back: string;
     confirmSave: string;
     retryImport: string;
     cancelImport: string;
@@ -171,17 +181,27 @@ export interface LocaleMessages {
 const en: LocaleMessages = {
   localeName: "English",
   buttons: {
+    recordMenu: "Record",
+    statusView: "Status",
+    inspectMenu: "Judgment",
+    settingsMenu: "Settings",
     importImage: "Import image",
+    directRecord: "Manual record",
     trackBtc: "Track BTC",
     trackEth: "Track ETH",
     trackBoth: "Track both",
+    trackAssets: "Tracked assets",
     setupProgress: "Setup progress",
+    language: "Language",
+    sleepMode: "Sleep mode",
+    restart: "Restart",
     recordCash: "Record cash",
     recordBtc: "Record BTC",
     recordEth: "Record ETH",
     status: "Status",
-    lastDecision: "Last decision",
-    hourlyHealth: "Hourly health",
+    lastDecision: "Recent judgment",
+    hourlyHealth: "Judgment history",
+    back: "Back",
     confirmSave: "Confirm save",
     retryImport: "Try again",
     cancelImport: "Cancel",
@@ -397,17 +417,27 @@ const en: LocaleMessages = {
 const ko: LocaleMessages = {
   localeName: "\uD55C\uAD6D\uC5B4",
   buttons: {
+    recordMenu: "\uAE30\uB85D\uD558\uAE30",
+    statusView: "\uC0C1\uD0DC \uBCF4\uAE30",
+    inspectMenu: "\uD310\uB2E8 \uBCF4\uAE30",
+    settingsMenu: "\uC124\uC815",
     importImage: "이미지로 기록",
+    directRecord: "\uC9C1\uC811 \uAE30\uB85D",
     trackBtc: "BTC \uCD94\uC801",
     trackEth: "ETH \uCD94\uC801",
     trackBoth: "\uB458 \uB2E4 \uCD94\uC801",
+    trackAssets: "\uCD94\uC801 \uC790\uC0B0",
     setupProgress: "\uC124\uC815 \uC9C4\uD589\uC0C1\uD669",
+    language: "\uC5B8\uC5B4",
+    sleepMode: "\uC218\uBA74 \uBAA8\uB4DC",
+    restart: "\uB2E4\uC2DC \uC2DC\uC791",
     recordCash: "\uD604\uAE08 \uAE30\uB85D",
     recordBtc: "BTC \uAE30\uB85D",
     recordEth: "ETH \uAE30\uB85D",
     status: "\uC0C1\uD0DC",
-    lastDecision: "\uCD5C\uADFC \uACB0\uC815",
-    hourlyHealth: "\uC2DC\uAC04\uBCC4 \uC0C1\uD0DC",
+    lastDecision: "\uCD5C\uADFC \uD310\uB2E8",
+    hourlyHealth: "\uD310\uB2E8 \uAE30\uB85D",
+    back: "\uB4A4\uB85C",
     confirmSave: "확인 저장",
     retryImport: "다시 보내기",
     cancelImport: "취소",

@@ -91,6 +91,54 @@ async function routeCallback(
     return [answer(callbackQuery?.id ?? "", messages.command.unsupportedAction)];
   }
 
+  if (action.kind === "menu:home") {
+    return [answer(callbackQuery.id), send(context.chatId, buildHomeMenuText(locale), buildOnboardingKeyboard(locale))];
+  }
+
+  if (action.kind === "menu:record") {
+    return [answer(callbackQuery.id), send(context.chatId, buildRecordMenuText(locale), buildRecordMenuKeyboard(locale))];
+  }
+
+  if (action.kind === "menu:record:direct") {
+    return [answer(callbackQuery.id), send(context.chatId, buildDirectRecordMenuText(locale), buildDirectRecordKeyboard(locale))];
+  }
+
+  if (action.kind === "menu:inspect") {
+    return [answer(callbackQuery.id), send(context.chatId, buildInspectMenuText(locale), buildInspectKeyboard(locale))];
+  }
+
+  if (action.kind === "menu:settings") {
+    return [answer(callbackQuery.id), send(context.chatId, buildSettingsMenuText(locale), buildSettingsKeyboard(locale))];
+  }
+
+  if (action.kind === "menu:settings:track") {
+    return [answer(callbackQuery.id), send(context.chatId, buildTrackAssetsMenuText(locale), buildTrackKeyboard(locale))];
+  }
+
+  if (action.kind === "menu:settings:language") {
+    return [answer(callbackQuery.id), send(context.chatId, buildLanguageMenuText(locale), buildLanguageKeyboard(locale))];
+  }
+
+  if (action.kind === "menu:settings:sleep") {
+    return [answer(callbackQuery.id), send(context.chatId, buildSleepMenuText(locale), buildSleepKeyboard(locale))];
+  }
+
+  if (action.kind === "menu:settings:restart") {
+    return [answer(callbackQuery.id), send(context.chatId, buildRestartMenuText(locale), buildRestartScopeKeyboard(locale))];
+  }
+
+  if (action.kind === "language:set") {
+    return [answer(callbackQuery.id), ...(await handleLanguageSelection(context, deps, action.locale))];
+  }
+
+  if (action.kind === "restart:scope") {
+    return [answer(callbackQuery.id), send(context.chatId, buildRestartConfirmText(locale, action.scope), buildRestartConfirmKeyboard(locale, action.scope))];
+  }
+
+  if (action.kind === "restart:confirm") {
+    return [answer(callbackQuery.id), ...(await handleFreshStartConfirmation(context, deps, locale, action.scope))];
+  }
+
   if (action.kind === "sleep:on") {
     return [answer(callbackQuery.id), ...(await handleSleep(context, deps, locale, true))];
   }
@@ -392,27 +440,147 @@ export function buildOnboardingKeyboard(locale: SupportedLocale = "en"): Telegra
   return {
     inline_keyboard: [
       [
+        { text: messages.buttons.recordMenu, callback_data: "menu:record" },
+        { text: messages.buttons.statusView, callback_data: "status:refresh" },
+      ],
+      [
+        { text: messages.buttons.inspectMenu, callback_data: "menu:inspect" },
+        { text: messages.buttons.settingsMenu, callback_data: "menu:settings" },
+      ],
+    ],
+  };
+}
+
+function buildRecordMenuKeyboard(locale: SupportedLocale): TelegramReplyMarkup {
+  const messages = getMessages(locale);
+  return {
+    inline_keyboard: [
+      [
         { text: messages.buttons.importImage, callback_data: "import:start" },
-        { text: messages.buttons.setupProgress, callback_data: "setup:progress" },
+        { text: messages.buttons.directRecord, callback_data: "menu:record:direct" },
       ],
+      [{ text: messages.buttons.back, callback_data: "menu:home" }],
+    ],
+  };
+}
+
+function buildDirectRecordKeyboard(locale: SupportedLocale): TelegramReplyMarkup {
+  const messages = getMessages(locale);
+  return {
+    inline_keyboard: [
       [
-        { text: messages.buttons.trackBtc, callback_data: "setup:track:btc" },
-        { text: messages.buttons.trackEth, callback_data: "setup:track:eth" },
-      ],
-      [
-        { text: messages.buttons.trackBoth, callback_data: "setup:track:both" },
         { text: messages.buttons.recordCash, callback_data: "setup:cash" },
       ],
       [
         { text: messages.buttons.recordBtc, callback_data: "setup:position:btc" },
         { text: messages.buttons.recordEth, callback_data: "setup:position:eth" },
       ],
+      [{ text: messages.buttons.back, callback_data: "menu:record" }],
+    ],
+  };
+}
+
+function buildInspectKeyboard(locale: SupportedLocale): TelegramReplyMarkup {
+  const messages = getMessages(locale);
+  return {
+    inline_keyboard: [
       [
-        { text: messages.buttons.status, callback_data: "status:refresh" },
         { text: messages.buttons.lastDecision, callback_data: "inspect:lastdecision" },
+        { text: messages.buttons.hourlyHealth, callback_data: "inspect:hourlyhealth" },
+      ],
+      [{ text: messages.buttons.back, callback_data: "menu:home" }],
+    ],
+  };
+}
+
+function buildSettingsKeyboard(locale: SupportedLocale): TelegramReplyMarkup {
+  const messages = getMessages(locale);
+  return {
+    inline_keyboard: [
+      [
+        { text: messages.buttons.trackAssets, callback_data: "menu:settings:track" },
+        { text: messages.buttons.setupProgress, callback_data: "setup:progress" },
       ],
       [
-        { text: messages.buttons.hourlyHealth, callback_data: "inspect:hourlyhealth" },
+        { text: messages.buttons.language, callback_data: "menu:settings:language" },
+        { text: messages.buttons.sleepMode, callback_data: "menu:settings:sleep" },
+      ],
+      [
+        { text: messages.buttons.restart, callback_data: "menu:settings:restart" },
+      ],
+      [{ text: messages.buttons.back, callback_data: "menu:home" }],
+    ],
+  };
+}
+
+function buildTrackKeyboard(locale: SupportedLocale): TelegramReplyMarkup {
+  const messages = getMessages(locale);
+  return {
+    inline_keyboard: [
+      [
+        { text: messages.buttons.trackBtc, callback_data: "setup:track:btc" },
+        { text: messages.buttons.trackEth, callback_data: "setup:track:eth" },
+      ],
+      [
+        { text: messages.buttons.trackBoth, callback_data: "setup:track:both" },
+      ],
+      [{ text: messages.buttons.back, callback_data: "menu:settings" }],
+    ],
+  };
+}
+
+function buildLanguageKeyboard(locale: SupportedLocale): TelegramReplyMarkup {
+  const messages = getMessages(locale);
+  return {
+    inline_keyboard: [
+      [
+        { text: "한국어", callback_data: "language:set:ko" },
+        { text: "English", callback_data: "language:set:en" },
+      ],
+      [{ text: messages.buttons.back, callback_data: "menu:settings" }],
+    ],
+  };
+}
+
+function buildSleepKeyboard(locale: SupportedLocale): TelegramReplyMarkup {
+  const messages = getMessages(locale);
+  return {
+    inline_keyboard: [
+      [
+        { text: locale === "ko" ? "켜기" : "Turn on", callback_data: "sleep:on" },
+        { text: locale === "ko" ? "끄기" : "Turn off", callback_data: "sleep:off" },
+      ],
+      [{ text: messages.buttons.back, callback_data: "menu:settings" }],
+    ],
+  };
+}
+
+function buildRestartScopeKeyboard(locale: SupportedLocale): TelegramReplyMarkup {
+  const messages = getMessages(locale);
+  return {
+    inline_keyboard: [
+      [
+        { text: messages.buttons.trackBtc, callback_data: "restart:scope:BTC" },
+        { text: messages.buttons.trackEth, callback_data: "restart:scope:ETH" },
+      ],
+      [
+        { text: messages.buttons.trackBoth, callback_data: "restart:scope:ALL" },
+      ],
+      [{ text: messages.buttons.back, callback_data: "menu:settings" }],
+    ],
+  };
+}
+
+function buildRestartConfirmKeyboard(
+  locale: SupportedLocale,
+  scope: StrategyMemoryResetScope,
+): TelegramReplyMarkup {
+  const messages = getMessages(locale);
+  return {
+    inline_keyboard: [
+      [
+        { text: locale === "ko" ? "확인" : "Confirm", callback_data: `restart:confirm:${scope}` },
+        { text: messages.buttons.back, callback_data: "menu:settings:restart" },
       ],
     ],
   };
@@ -517,11 +685,114 @@ async function handleImageImportStart(
   const provider = deps.imageImportProvider;
 
   if (!provider || !provider.isConfigured()) {
-    return [send(context.chatId, messages.importFlow.unavailable, buildOnboardingKeyboard(locale))];
+    return [send(context.chatId, messages.importFlow.unavailable, buildRecordMenuKeyboard(locale))];
   }
 
   await provider.beginImport({ telegramUserId: context.userId });
-  return [send(context.chatId, messages.importFlow.startPrompt, buildOnboardingKeyboard(locale))];
+  return [send(context.chatId, messages.importFlow.startPrompt, buildRecordMenuKeyboard(locale))];
+}
+
+async function handleLanguageSelection(
+  context: TelegramCommandContext,
+  deps: TelegramRouterDependencies,
+  locale: SupportedLocale,
+): Promise<TelegramOutgoingAction[]> {
+  if (deps.stateStore?.setLocale) {
+    await deps.stateStore.setLocale(context.userId, locale);
+  }
+
+  const messages = getMessages(locale);
+  return [send(context.chatId, messages.command.languageSet(messages.localeName), buildSettingsKeyboard(locale))];
+}
+
+async function handleFreshStartConfirmation(
+  context: TelegramCommandContext,
+  deps: TelegramRouterDependencies,
+  locale: SupportedLocale,
+  scope: StrategyMemoryResetScope,
+): Promise<TelegramOutgoingAction[]> {
+  if (deps.stateStore?.resetStrategyMemory) {
+    await deps.stateStore.resetStrategyMemory(context.userId, scope);
+  }
+
+  return [send(context.chatId, getMessages(locale).command.freshStartRecorded(scope), buildSettingsKeyboard(locale))];
+}
+
+function buildHomeMenuText(locale: SupportedLocale): string {
+  return locale === "ko"
+    ? "원하는 작업을 선택해 주세요."
+    : "Choose what you want to do.";
+}
+
+function buildRecordMenuText(locale: SupportedLocale): string {
+  return locale === "ko"
+    ? "기록 방식을 선택해 주세요."
+    : "Choose how to update your record.";
+}
+
+function buildDirectRecordMenuText(locale: SupportedLocale): string {
+  return locale === "ko"
+    ? "직접 수정할 기록을 선택해 주세요."
+    : "Choose which manual value to update.";
+}
+
+function buildInspectMenuText(locale: SupportedLocale): string {
+  return locale === "ko"
+    ? "판단 관련 화면을 선택해 주세요."
+    : "Choose which judgment view to open.";
+}
+
+function buildSettingsMenuText(locale: SupportedLocale): string {
+  return locale === "ko"
+    ? "설정 항목을 선택해 주세요."
+    : "Choose a settings section.";
+}
+
+function buildTrackAssetsMenuText(locale: SupportedLocale): string {
+  return locale === "ko"
+    ? "추적할 자산을 선택해 주세요."
+    : "Choose which assets to track.";
+}
+
+function buildLanguageMenuText(locale: SupportedLocale): string {
+  return locale === "ko"
+    ? "사용할 언어를 선택해 주세요."
+    : "Choose your language.";
+}
+
+function buildSleepMenuText(locale: SupportedLocale): string {
+  return locale === "ko"
+    ? "알림 수면 모드를 선택해 주세요."
+    : "Choose your sleep-mode setting.";
+}
+
+function buildRestartMenuText(locale: SupportedLocale): string {
+  return locale === "ko"
+    ? [
+        "다시 시작 범위를 선택해 주세요.",
+        "현금/코인 기록은 유지되고, 최근 판단 기억만 초기화합니다.",
+      ].join("\n")
+    : [
+        "Choose a restart scope.",
+        "Stored cash and spot records stay the same. Only recent judgment memory is reset.",
+      ].join("\n");
+}
+
+function buildRestartConfirmText(
+  locale: SupportedLocale,
+  scope: StrategyMemoryResetScope,
+): string {
+  return locale === "ko"
+    ? [
+        `${scope} 범위를 다시 시작할까요?`,
+        "현금/코인 기록은 유지됩니다.",
+        "최근 판단 기억만 초기화합니다.",
+      ].join("\n")
+    : [
+        `Restart ${scope}?`,
+        "Stored cash and spot records are kept.",
+        "Only recent judgment memory will be reset.",
+      ].join("\n");
 }
 
 function buildCashShortcutActions(

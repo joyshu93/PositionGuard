@@ -221,6 +221,18 @@ export interface TelegramWebhookContext {
 }
 
 export type TelegramCallbackAction =
+  | { kind: 'menu:home' }
+  | { kind: 'menu:record' }
+  | { kind: 'menu:record:direct' }
+  | { kind: 'menu:inspect' }
+  | { kind: 'menu:settings' }
+  | { kind: 'menu:settings:track' }
+  | { kind: 'menu:settings:language' }
+  | { kind: 'menu:settings:sleep' }
+  | { kind: 'menu:settings:restart' }
+  | { kind: 'language:set'; locale: SupportedLocale }
+  | { kind: 'restart:scope'; scope: StrategyMemoryResetScope }
+  | { kind: 'restart:confirm'; scope: StrategyMemoryResetScope }
   | { kind: 'sleep:on' }
   | { kind: 'sleep:off' }
   | { kind: 'status:refresh' }

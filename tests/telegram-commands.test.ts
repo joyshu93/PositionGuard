@@ -250,14 +250,11 @@ if (startAction && startAction.kind === "sendMessage" && startAction.replyMarkup
 }
 
 assert(
-    startCallbackData.includes("setup:track:btc") &&
-      startCallbackData.includes("setup:track:eth") &&
-      startCallbackData.includes("setup:track:both") &&
-      startCallbackData.includes("import:start") &&
-      startCallbackData.includes("setup:progress") &&
-      startCallbackData.includes("inspect:lastdecision") &&
-      startCallbackData.includes("inspect:hourlyhealth"),
-    "/start should expose setup and operator-inspection buttons.",
+    startCallbackData.includes("menu:record") &&
+      startCallbackData.includes("status:refresh") &&
+      startCallbackData.includes("menu:inspect") &&
+      startCallbackData.includes("menu:settings"),
+    "/start should expose the top-level home menu buttons.",
   );
 assert(
   startActions[0]?.kind === "sendMessage" &&
@@ -267,8 +264,77 @@ assert(
 assert(
   startKoActions[0]?.kind === "sendMessage" &&
     startKoActions[0].text.includes("\uD604\uBB3C \uD3EC\uC9C0\uC158 \uCF54\uCE58 \uBD07") &&
-    startKoActions[0].replyMarkup?.inline_keyboard[0]?.[0]?.text === "\uC774\uBBF8\uC9C0\uB85C \uAE30\uB85D",
+    startKoActions[0].replyMarkup?.inline_keyboard[0]?.[0]?.text === "\uAE30\uB85D\uD558\uAE30",
   "/start should render Korean copy and button labels for Korean users.",
+);
+
+const recordMenuActions = await routeCommand(
+  {
+    ...baseContext,
+    command: "callback",
+    text: "menu:record",
+    args: [],
+    replyToCallback: {
+      id: "cb-menu-record",
+      from: { id: 100, first_name: "Test" },
+      data: "menu:record",
+      message: {
+        message_id: 11,
+        date: 1,
+        chat: { id: 200, type: "private" },
+        from: { id: 100, first_name: "Test" },
+        text: "Menu record",
+      },
+    },
+  },
+  deps,
+);
+
+assertEqual(
+  recordMenuActions[0]?.kind,
+  "answerCallbackQuery",
+  "record menu callback should acknowledge the button press first.",
+);
+assert(
+  recordMenuActions.some(
+    (action) =>
+      action.kind === "sendMessage" &&
+      action.text.includes("Choose how to update your record.") &&
+      action.replyMarkup?.inline_keyboard.flat().some((button) => button.callback_data === "menu:record:direct"),
+  ),
+  "record menu callback should open the record submenu.",
+);
+
+const settingsMenuActions = await routeCommand(
+  {
+    ...baseContext,
+    command: "callback",
+    text: "menu:settings",
+    args: [],
+    replyToCallback: {
+      id: "cb-menu-settings",
+      from: { id: 100, first_name: "Test" },
+      data: "menu:settings",
+      message: {
+        message_id: 12,
+        date: 1,
+        chat: { id: 200, type: "private" },
+        from: { id: 100, first_name: "Test" },
+        text: "Menu settings",
+      },
+    },
+  },
+  deps,
+);
+
+assert(
+  settingsMenuActions.some(
+    (action) =>
+      action.kind === "sendMessage" &&
+      action.text.includes("Choose a settings section.") &&
+      action.replyMarkup?.inline_keyboard.flat().some((button) => button.callback_data === "menu:settings:restart"),
+  ),
+  "settings menu callback should open the settings submenu.",
 );
 
 const helpKoActions = await routeCommand(

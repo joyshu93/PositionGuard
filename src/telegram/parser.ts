@@ -103,6 +103,57 @@ export function parseTelegramCallbackAction(data: string | undefined): TelegramC
     return null;
   }
 
+  if (data === 'menu:home') {
+    return { kind: 'menu:home' };
+  }
+  if (data === 'menu:record') {
+    return { kind: 'menu:record' };
+  }
+  if (data === 'menu:record:direct') {
+    return { kind: 'menu:record:direct' };
+  }
+  if (data === 'menu:inspect') {
+    return { kind: 'menu:inspect' };
+  }
+  if (data === 'menu:settings') {
+    return { kind: 'menu:settings' };
+  }
+  if (data === 'menu:settings:track') {
+    return { kind: 'menu:settings:track' };
+  }
+  if (data === 'menu:settings:language') {
+    return { kind: 'menu:settings:language' };
+  }
+  if (data === 'menu:settings:sleep') {
+    return { kind: 'menu:settings:sleep' };
+  }
+  if (data === 'menu:settings:restart') {
+    return { kind: 'menu:settings:restart' };
+  }
+  if (data === 'language:set:ko') {
+    return { kind: 'language:set', locale: 'ko' };
+  }
+  if (data === 'language:set:en') {
+    return { kind: 'language:set', locale: 'en' };
+  }
+  if (data === 'restart:scope:BTC') {
+    return { kind: 'restart:scope', scope: 'BTC' };
+  }
+  if (data === 'restart:scope:ETH') {
+    return { kind: 'restart:scope', scope: 'ETH' };
+  }
+  if (data === 'restart:scope:ALL') {
+    return { kind: 'restart:scope', scope: 'ALL' };
+  }
+  if (data === 'restart:confirm:BTC') {
+    return { kind: 'restart:confirm', scope: 'BTC' };
+  }
+  if (data === 'restart:confirm:ETH') {
+    return { kind: 'restart:confirm', scope: 'ETH' };
+  }
+  if (data === 'restart:confirm:ALL') {
+    return { kind: 'restart:confirm', scope: 'ALL' };
+  }
   if (data === 'sleep:on') {
     return { kind: 'sleep:on' };
   }
