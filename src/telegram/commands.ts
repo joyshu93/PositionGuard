@@ -705,10 +705,9 @@ function renderHourlyHealthSnapshot(
     : messages.booleans.none;
 
   const reminderSummary =
-    `eligible ${formatAvailability(locale, snapshot.latestReminderEligible === true)} | ` +
-    `sent ${formatAvailability(locale, snapshot.latestReminderSent === true)} | ` +
-    `repeated ${snapshot.latestReminderRepeatedSignalCount ?? messages.booleans.notAvailable}` +
-    `${snapshot.latestReminderSuppressedBy ? ` | suppressed ${snapshot.latestReminderSuppressedBy}` : ""}`;
+    formatReminderSummary(snapshot, locale);
+  const latestDecisionSummary = formatLatestDecisionSummary(snapshot, locale);
+  const marketDataLines = formatHourlyMarketDataLines(snapshot, locale);
 
   return [
     messages.operator.hourlyHealthTitle,
@@ -717,10 +716,8 @@ function renderHourlyHealthSnapshot(
       ? `\uC900\uBE44\uB3C4: ${snapshot.readiness.isReady ? messages.booleans.ready : messages.booleans.incomplete} | \uD604\uAE08: ${snapshot.readiness.hasCashRecord ? messages.booleans.yes : messages.booleans.no} | \uD3EC\uC9C0\uC158: ${formatTrackedAssets(snapshot.readiness.readyPositionAssets, locale)}`
       : `Readiness: ${snapshot.readiness.isReady ? "ready" : "blocked"} | cash: ${snapshot.readiness.hasCashRecord ? "yes" : "no"} | positions: ${formatTrackedAssets(snapshot.readiness.readyPositionAssets, locale)}`,
     messages.status.missingNextSteps(formatNextSteps(snapshot.readiness.missingItems, locale)),
-    messages.operator.latestDecision(snapshot.lastDecisionStatus ?? messages.booleans.none, snapshot.lastRunAt ?? ""),
-    locale === "ko"
-      ? `\uC2DC\uC7A5 \uB370\uC774\uD130: ${snapshot.marketDataStatus ?? messages.booleans.none} | \uC2E4\uD328: ${snapshot.recentMarketFailureCount} | \uCD5C\uADFC \uC774\uC288: ${snapshot.latestMarketFailureMessage ? truncateText(snapshot.latestMarketFailureMessage, 100) : messages.booleans.none}`
-      : `Market data: ${snapshot.marketDataStatus ?? messages.booleans.none} | failures: ${snapshot.recentMarketFailureCount} | latest issue: ${snapshot.latestMarketFailureMessage ? truncateText(snapshot.latestMarketFailureMessage, 100) : messages.booleans.none}`,
+    latestDecisionSummary,
+    ...marketDataLines,
     locale === "ko"
       ? `\uAD6C\uC870: \uB808\uC9D0 ${snapshot.latestRegime ?? messages.booleans.notAvailable} | \uD2B8\uB9AC\uAC70 ${snapshot.latestTriggerState ?? messages.booleans.notAvailable} | \uBB34\uD6A8\uD654 ${snapshot.latestInvalidationState ?? messages.booleans.notAvailable}`
       : `Structure: regime ${snapshot.latestRegime ?? messages.booleans.notAvailable} | trigger ${snapshot.latestTriggerState ?? messages.booleans.notAvailable} | invalidation ${snapshot.latestInvalidationState ?? messages.booleans.notAvailable}`,
@@ -733,6 +730,106 @@ function renderHourlyHealthSnapshot(
     locale === "ko" ? `\uCD5C\uADFC \uC54C\uB9BC: ${latestNotification}` : `Latest alert: ${latestNotification}`,
     messages.operator.operationalOnly,
   ].join("\n");
+}
+
+function formatLatestDecisionSummary(
+  snapshot: TelegramHourlyHealthSnapshot,
+  locale: SupportedLocale,
+): string {
+  const messages = getMessages(locale);
+  const status = snapshot.lastDecisionStatus ?? messages.booleans.none;
+  const when = snapshot.lastRunAt
+    ? formatCompactTimestampForLocale(locale, snapshot.lastRunAt)
+    : messages.booleans.notAvailable;
+
+  return locale === "ko"
+    ? `\uCD5C\uADFC \uACB0\uC815: ${status} | ${when}`
+    : `Latest decision: ${status} | ${when}`;
+}
+
+function formatHourlyMarketDataLines(
+  snapshot: TelegramHourlyHealthSnapshot,
+  locale: SupportedLocale,
+): string[] {
+  const messages = getMessages(locale);
+  const currentStatus = snapshot.marketDataStatus ?? messages.booleans.none;
+  const lines = [
+    locale === "ko"
+      ? `\uD604\uC7AC \uC2DC\uC7A5 \uB370\uC774\uD130: ${currentStatus}`
+      : `Current market data: ${currentStatus}`,
+    locale === "ko"
+      ? `\uCD5C\uADFC \uC2DC\uC7A5 \uB370\uC774\uD130 \uC2E4\uD328: ${snapshot.recentMarketFailureCount}\uD68C`
+      : `Recent market-data failures: ${snapshot.recentMarketFailureCount}`,
+  ];
+
+  if (snapshot.latestMarketFailureMessage) {
+    lines.push(
+      locale === "ko"
+        ? `\uB9C8\uC9C0\uB9C9 \uC2E4\uD328 \uC0AC\uC720: ${truncateText(snapshot.latestMarketFailureMessage, 100)}`
+        : `Last failure reason: ${truncateText(snapshot.latestMarketFailureMessage, 100)}`,
+    );
+  }
+
+  return lines;
+}
+
+function formatReminderSummary(
+  snapshot: TelegramHourlyHealthSnapshot,
+  locale: SupportedLocale,
+): string {
+  const messages = getMessages(locale);
+
+  if (
+    snapshot.latestReminderEligible === false &&
+    snapshot.latestReminderSent === false &&
+    (snapshot.latestReminderRepeatedSignalCount ?? 0) === 0 &&
+    snapshot.latestReminderSuppressedBy === "unsupported_reason"
+  ) {
+    return locale === "ko" ? "\uD574\uB2F9 \uC5C6\uC74C" : "not applicable";
+  }
+
+  const suppressedBy = mapReminderSuppressionReason(
+    snapshot.latestReminderSuppressedBy,
+    locale,
+  );
+
+  return (
+    `eligible ${formatAvailability(locale, snapshot.latestReminderEligible === true)} | ` +
+    `sent ${formatAvailability(locale, snapshot.latestReminderSent === true)} | ` +
+    `repeated ${snapshot.latestReminderRepeatedSignalCount ?? messages.booleans.notAvailable}` +
+    `${suppressedBy ? ` | suppressed ${suppressedBy}` : ""}`
+  );
+}
+
+function mapReminderSuppressionReason(
+  value: string | null,
+  locale: SupportedLocale,
+): string | null {
+  if (!value) {
+    return null;
+  }
+
+  if (value === "unsupported_reason") {
+    return locale === "ko" ? "\uD574\uB2F9 \uC5C6\uC74C" : "not applicable";
+  }
+
+  if (value === "below_repeat_threshold") {
+    return locale === "ko" ? "\uBC18\uBCF5 \uD69F\uC218 \uBD80\uC871" : "below repeat threshold";
+  }
+
+  if (value === "state_changed") {
+    return locale === "ko" ? "\uC800\uC7A5 \uC0C1\uD0DC \uBCC0\uACBD\uB428" : "state changed";
+  }
+
+  if (value === "primary_alert_sent") {
+    return locale === "ko" ? "\uC8FC \uC54C\uB9BC \uAE30\uC804\uC1A1" : "primary alert sent";
+  }
+
+  if (value === "sleep_mode") {
+    return locale === "ko" ? "\uC218\uBA74 \uBAA8\uB4DC" : "sleep mode";
+  }
+
+  return value;
 }
 
 function formatTrackedAssets(assets: Array<"BTC" | "ETH">, locale: SupportedLocale): string {

@@ -761,11 +761,73 @@ if (hourlyHealthAction && hourlyHealthAction.kind === "sendMessage") {
 
 assert(
   hourlyHealthText.includes("Hourly health:") &&
-    hourlyHealthText.includes("Market data: fetch_failure") &&
+    hourlyHealthText.includes("Latest decision: ACTION_NEEDED | 2026-01-01 12:00:00 KST") &&
+    hourlyHealthText.includes("Current market data: fetch_failure") &&
+    hourlyHealthText.includes("Recent market-data failures: 3") &&
+    hourlyHealthText.includes("Last failure reason: Upbit request failed (502 Bad Gateway): upstream timeout") &&
     hourlyHealthText.includes("Structure: regime PULLBACK_IN_UPTREND | trigger CONFIRMED | invalidation CLEAR") &&
     hourlyHealthText.includes("Reminder: eligible yes | sent no | repeated 2 | suppressed cooldown") &&
     hourlyHealthText.includes("Suppression: cooldown 2 | sleep 1 | setup 4"),
   "/hourlyhealth should render compact operational health details.",
+);
+
+const unsupportedReminderHealthActions = await routeCommand(
+  {
+    ...baseContext,
+    command: "hourlyhealth",
+    args: [],
+    text: "/hourlyhealth",
+  },
+  {
+    ...deps,
+    inspectionProvider: {
+      async getLastDecisionSnapshot() {
+        return null;
+      },
+      async getHourlyHealthSnapshot() {
+        return {
+          trackedAssets: ["BTC"] as ("BTC" | "ETH")[],
+          readiness: {
+            isReady: true,
+            missingItems: [],
+            hasCashRecord: true,
+            readyPositionAssets: ["BTC"] as ("BTC" | "ETH")[],
+          },
+          lastRunAt: "2026-01-01T03:00:00.000Z",
+          lastDecisionStatus: "NO_ACTION",
+          marketDataStatus: "ok" as const,
+          recentMarketFailureCount: 10,
+          recentCooldownSkipCount: 0,
+          recentSleepSuppressionCount: 0,
+          recentSetupBlockedCount: 0,
+          latestMarketFailureMessage: "Upbit request failed (522 <none>): error code: 522",
+          latestRegime: "RECLAIM_ATTEMPT",
+          latestTriggerState: "PENDING",
+          latestInvalidationState: "CLEAR",
+          latestReminderEligible: false,
+          latestReminderSent: false,
+          latestReminderSuppressedBy: "unsupported_reason",
+          latestReminderRepeatedSignalCount: 0,
+          latestNotification: null,
+        };
+      },
+    },
+  },
+);
+
+const unsupportedReminderHealthAction = unsupportedReminderHealthActions[0];
+let unsupportedReminderHealthText = "";
+if (
+  unsupportedReminderHealthAction &&
+  unsupportedReminderHealthAction.kind === "sendMessage"
+) {
+  unsupportedReminderHealthText = unsupportedReminderHealthAction.text;
+}
+
+assert(
+  unsupportedReminderHealthText.includes("Reminder: not applicable") &&
+    !unsupportedReminderHealthText.includes("unsupported_reason"),
+  "/hourlyhealth should hide internal unsupported_reason values from user-facing reminder text.",
 );
 
 const callbackInspectionActions = await routeCommand(
