@@ -39,6 +39,7 @@ This product is for spot investors, not leverage traders. Any future logic shoul
 - User state is manually reported, not synced from an exchange.
 - Upbit public market data is acceptable; private account integration is out of scope.
 - Decision outputs should remain conservative while strategy logic is incomplete.
+- Recent strategy tuning may modestly increase participation once structure is already approved, but it does not relax invalidation-first, no-chase, or spot-first principles.
 - Messaging should sound like coaching and risk framing, not trade execution intent.
 
 ## Naming Guidance

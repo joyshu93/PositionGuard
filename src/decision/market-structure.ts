@@ -860,8 +860,8 @@ function isConstructiveVolumeRecovery(
   const fourHourRatio = fourHour.indicators.volumeRatio ?? 0;
 
   return (
-    oneHourRatio >= 1.05
-    && oneHour.latestClose >= oneHour.previousClose
+    oneHourRatio >= 1.005
+    && oneHour.latestClose > oneHour.previousClose
   ) || (
     fourHourRatio >= 1
     && fourHour.latestClose >= fourHour.previousClose

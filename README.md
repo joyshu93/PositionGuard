@@ -334,9 +334,9 @@ This remains a manual record system. It does not sync balances or execute orders
 - Screenshot import remains optional and is unavailable unless `OPENAI_API_KEY` is configured
 - `/lastalert`, `/lastdecision`, and `/hourlyhealth` are user-scoped inspection tools, not a global admin console
 
-Decision outputs are structured as coaching summaries and reasons, and the current engine stays conservative and record-only. The judgment core now mirrors the PaperTrade-style interpretation flow: completed-candle market structure analysis, explicit entry-path and evidence scoring, thresholded confirmation, and invalidation-first weakening checks. It still prefers `SETUP_INCOMPLETE` / `INSUFFICIENT_DATA` / `NO_ACTION` when information is missing or structure is quiet, and keeps `ACTION_NEEDED` narrow for explicit manual correction, repeated market-data failure, or a clear coaching review need. When a setup is actionable, the engine may also attach a structured `executionGuide` with record-only coaching detail such as entry/add/reduce zone, staged size guidance, invalidation level, and chase guard.
+Decision outputs are structured as coaching summaries and reasons, and the current engine stays conservative and record-only. The judgment core uses completed-candle market structure analysis, explicit entry-path and evidence scoring, thresholded confirmation, and invalidation-first weakening checks. It still prefers `SETUP_INCOMPLETE` / `INSUFFICIENT_DATA` / `NO_ACTION` when information is missing or structure is quiet, and keeps `ACTION_NEEDED` narrow for explicit manual correction, repeated market-data failure, or a clear coaching review need. When a setup is actionable, the engine may also attach a structured `executionGuide` with record-only coaching detail such as entry/add/reduce zone, staged size guidance, invalidation level, and chase guard.
 
-Current coaching behavior is intentionally narrow and rule-based:
+Current coaching behavior is intentionally narrow and rule-based. Recent tuning modestly reduces cash conservatism once structure is already approved, but it does not relax invalidation-first, no-chase, or spot-first principles:
 
 - `entry review`: possible only when a tracked asset has no recorded spot inventory, cash is available, higher timeframe structure is not in outright breakdown risk, invalidation is explainable, and either a constructive pullback path or a valid reclaim / breakout-hold path is present without obvious chase damage
 - `add-buy review`: possible only when a recorded spot position exists, cash remains available, higher timeframe structure is still constructive or improving, the current location looks like a controlled pullback or a valid reclaim-strength continuation, and the trigger is supportive enough for a staged add-buy review
@@ -407,6 +407,8 @@ Recent conservative refinements in that flow:
 
 - pullback and reclaim / continuation setups are handled separately so valid reclaim participation is not auto-blocked by every upper-range condition
 - breakdown and invalidation lean on timeframe closes and ATR-buffered support failure rather than a single live-price wick
+- staged sizing defaults were eased slightly so record-only coaching can start from 0.30 of cash on `ENTRY` and 0.18 of cash on `ADD_BUY`
+- constructive 1h volume recovery now allows a minimal ratio lift of `1.005` when the latest completed 1h close is strictly above the prior close, while the 4h branch remains conservative
 - intermediate recovery regimes such as `EARLY_RECOVERY` and `RECLAIM_ATTEMPT` sit between outright bull trend and weak downtrend
 - reduce-side confirmation now prefers confirmed structure damage plus supporting weakness instead of reacting to a single RSI or MACD wobble
 - repeated-signal memory is preserved through the reminder layer so repeated review signals can be distinguished from unchanged manual state

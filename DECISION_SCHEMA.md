@@ -10,7 +10,7 @@ At this stage, the repository may implement:
 - placeholder readiness checks
 - conservative rule-based coaching summaries and reasons
 - simple market-structure summaries for `1h`, `4h`, and `1d`
-- transparent, PaperTrade-style structure scoring and path selection for market interpretation
+- transparent, conservative structure scoring and path selection for market interpretation
 - a temporary `ACTION_NEEDED` alert contract for explicit operational cases only
 - persistence for decision logs
 
@@ -194,6 +194,7 @@ Decision summaries and reasons should read like conservative coaching, not execu
 - `summary` should give a short, explicit coaching takeaway.
 - `reasons` should explain regime, setup, trigger, invalidation, or risk in plain language.
 - `executionGuide` may provide explicit record-only coaching detail about where to act, how much to stage, what invalidates the idea, and whether chasing is forbidden.
+- current staged sizing defaults are slightly less cash conservative once structure is already approved: `ENTRY` guidance starts around `0.30` of cash and `ADD_BUY` guidance can use `0.18` of cash as the default staged add size
 - explicit evidence scores may be used internally, but they should stay transparent and inspectable rather than predictive or discretionary.
 - `ACTION_NEEDED` should stay narrow and only cover manual correction, contradictory state, repeated operational failure, or clear invalidation/risk escalation.
 - The rule-based engine may use `ACTION_NEEDED` directly for risk review when structure weakens materially, while the temporary alert policy remains available for setup and operational failures.
@@ -270,6 +271,8 @@ Current conservative confirmation details include:
 
 - upper-range chase protection that stays active for obvious late extensions, but does not automatically veto a valid reclaim / breakout-hold
 - breakdown and invalidation checks that prefer timeframe candle closes and ATR-buffered support failure over a single live-price wick
+- constructive 1h volume recovery can pass on a minimal ratio lift of `1.005` when the latest completed 1h close is strictly above the previous close, while the `4h` branch remains conservative
+- this is a modest reduction in cash conservatism once structure is already approved, not a philosophical shift, and it does not loosen invalidation-first, no-chase, or spot-first principles
 - reduce-side confirmation that prefers structure damage plus at least one supporting weakness signal instead of a single indicator wobble
 
 ## Allowed Coaching Phrases

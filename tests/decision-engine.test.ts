@@ -1,4 +1,5 @@
 import { buildDecisionContext } from "../src/decision/context.js";
+import { analyzeMarketStructure } from "../src/decision/market-structure.js";
 import { runDecisionEngine } from "../src/decision/engine.js";
 import { buildDefaultStrategyInputs } from "../src/decision/settings.js";
 import type {
@@ -48,6 +49,38 @@ const baseUserState: UserStateBundle = {
   },
 };
 
+const defaultStrategySettings = buildDefaultStrategyInputs().settings;
+assertEqual(
+  defaultStrategySettings.entryAllocation,
+  0.30,
+  "Default entry allocation should reflect the slightly eased staged sizing.",
+);
+assertEqual(
+  defaultStrategySettings.addAllocation,
+  0.18,
+  "Default add allocation should reflect the slightly eased staged sizing.",
+);
+assertEqual(
+  defaultStrategySettings.minimumTradeValueKrw,
+  5_000,
+  "Other strategy defaults should remain unchanged.",
+);
+assertEqual(
+  defaultStrategySettings.reduceFraction,
+  0.33,
+  "Other strategy defaults should remain unchanged.",
+);
+assertEqual(
+  defaultStrategySettings.perAssetMaxAllocation,
+  0.45,
+  "Other strategy defaults should remain unchanged.",
+);
+assertEqual(
+  defaultStrategySettings.totalPortfolioMaxExposure,
+  0.75,
+  "Other strategy defaults should remain unchanged.",
+);
+
 const setupIncomplete = runDecisionEngine(
   buildDecisionContext({
     userState: {
@@ -79,6 +112,64 @@ assertEqual(
   insufficientData.status,
   "INSUFFICIENT_DATA",
   "Missing normalized market data should remain a distinct status.",
+);
+
+const borderlineVolumeRecoverySnapshot = buildMarketSnapshot({
+  market: "KRW-BTC",
+  asset: "BTC",
+  oneHourCloses: buildSeries([
+    { start: 100, end: 116, length: 33 },
+    { start: 116, end: 116.5, length: 1 },
+    { start: 116.5, end: 117, length: 1 },
+  ]),
+  fourHourCloses: buildSeries([
+    { start: 100, end: 114, length: 33 },
+    { start: 114, end: 114.3, length: 1 },
+    { start: 114.3, end: 114.8, length: 1 },
+  ]),
+  oneDayCloses: buildSeries([
+    { start: 100, end: 112, length: 33 },
+    { start: 112, end: 112.2, length: 1 },
+    { start: 112.2, end: 112.6, length: 1 },
+  ]),
+  oneHourVolumes: buildVolumeSeries(35, 100.5),
+  fourHourVolumes: buildVolumeSeries(35, 99),
+  oneDayVolumes: buildVolumeSeries(35, 100),
+  tradePrice: 117,
+});
+
+const borderlineStructure = analyzeMarketStructure(borderlineVolumeRecoverySnapshot);
+assert(
+  borderlineStructure.timeframes["1h"].latestClose > borderlineStructure.timeframes["1h"].previousClose,
+  "Borderline 1h recovery volume should require the latest close to improve over the prior close.",
+);
+assertCloseTo(
+  borderlineStructure.timeframes["1h"].indicators.volumeRatio,
+  1.005,
+  0.0001,
+  "Borderline 1h recovery volume should sit on the eased threshold.",
+);
+assertEqual(
+  borderlineStructure.volumeRecovery,
+  true,
+  "The eased 1h recovery branch should now classify the borderline case as constructive volume recovery.",
+);
+
+const borderlineVolumeRecoveryDecision = runDecisionEngine(
+  buildDecisionContext({
+    userState: withPositionState({
+      quantity: 0,
+      averageEntryPrice: 0,
+    }),
+    asset: "BTC",
+    marketSnapshot: borderlineVolumeRecoverySnapshot,
+    generatedAt: "2026-01-01T01:00:00.000Z",
+  }),
+);
+
+assert(
+  borderlineVolumeRecoveryDecision.diagnostics?.setup.supports.includes("Volume recovery is supportive.") ?? false,
+  "Decision diagnostics should surface the borderline 1h recovery as a setup support.",
 );
 
 const bullishPullbackSnapshot = buildMarketSnapshot({
@@ -143,6 +234,44 @@ assert(
     && immediateEntryDecision.alert?.message.includes("Invalidation:")
     && immediateEntryDecision.alert?.message.includes("Chase guard:"),
   "Immediate entry alerts should include structured execution guidance.",
+);
+assertEqual(
+  immediateEntryDecision.executionGuide?.initialSizePctOfCash ?? null,
+  30,
+  "Entry execution guidance should reflect the slightly eased default staged size.",
+);
+
+const immediateAddDecision = runDecisionEngine(
+  buildDecisionContext({
+    userState: withPositionState({
+      quantity: 0.25,
+      averageEntryPrice: 150,
+    }),
+    asset: "BTC",
+    marketSnapshot: bullishPullbackSnapshot,
+    generatedAt: "2026-01-01T01:00:00.000Z",
+  }),
+);
+
+assertEqual(
+  immediateAddDecision.status,
+  "ACTION_NEEDED",
+  "Constructive held positions with cash should still surface staged add review when bullish evidence is strong.",
+);
+assertEqual(
+  immediateAddDecision.alert?.reason ?? null,
+  "ADD_BUY_REVIEW_REQUIRED",
+  "Immediate add setups should use the add-buy review alert reason.",
+);
+assertEqual(
+  immediateAddDecision.executionGuide?.planType ?? null,
+  "ADD_BUY",
+  "Immediate add setups should expose add-buy execution guidance.",
+);
+assertEqual(
+  immediateAddDecision.executionGuide?.initialSizePctOfCash ?? null,
+  18,
+  "Add execution guidance should reflect the slightly eased default staged add size.",
 );
 
 const deferredEntryDecision = runDecisionEngine(
@@ -441,6 +570,9 @@ function buildMarketSnapshot(input: {
   oneHourVolumeMultiplier?: number;
   fourHourVolumeMultiplier?: number;
   oneDayVolumeMultiplier?: number;
+  oneHourVolumes?: number[];
+  fourHourVolumes?: number[];
+  oneDayVolumes?: number[];
   tradePrice?: number;
 }): MarketSnapshot {
   const tradePrice =
@@ -456,9 +588,9 @@ function buildMarketSnapshot(input: {
       fetchedAt: "2026-01-01T01:00:00.000Z",
     },
     timeframes: {
-      "1h": buildTimeframe("1h", input.market, input.oneHourCloses, input.oneHourVolumeMultiplier ?? 1),
-      "4h": buildTimeframe("4h", input.market, input.fourHourCloses, input.fourHourVolumeMultiplier ?? 1),
-      "1d": buildTimeframe("1d", input.market, input.oneDayCloses, input.oneDayVolumeMultiplier ?? 1),
+      "1h": buildTimeframe("1h", input.market, input.oneHourCloses, input.oneHourVolumeMultiplier ?? 1, input.oneHourVolumes),
+      "4h": buildTimeframe("4h", input.market, input.fourHourCloses, input.fourHourVolumeMultiplier ?? 1, input.fourHourVolumes),
+      "1d": buildTimeframe("1d", input.market, input.oneDayCloses, input.oneDayVolumeMultiplier ?? 1, input.oneDayVolumes),
     },
     fetchedAt: "2026-01-01T01:00:00.000Z",
   };
@@ -469,6 +601,7 @@ function buildTimeframe(
   market: SupportedMarket,
   closes: number[],
   volumeMultiplier: number,
+  volumes?: number[],
 ): { timeframe: SupportedTimeframe; candles: MarketCandle[] } {
   const latestCloseMs = Date.parse("2026-01-01T01:00:00.000Z");
   const durationHours = timeframe === "1h" ? 1 : timeframe === "4h" ? 4 : 24;
@@ -479,6 +612,7 @@ function buildTimeframe(
     const high = Math.max(open, close) + 1;
     const low = Math.min(open, close) - 1;
     const baseVolume = index >= closes.length - 4 ? 100 * volumeMultiplier : 100;
+    const volume = volumes?.[index] ?? baseVolume;
     const closeMs = latestCloseMs - (closes.length - 1 - index) * durationMs;
     const start = new Date(closeMs - durationMs).toISOString();
     const closeTime = new Date(closeMs).toISOString();
@@ -492,8 +626,8 @@ function buildTimeframe(
       highPrice: high,
       lowPrice: low,
       closePrice: close,
-      volume: baseVolume,
-      quoteVolume: baseVolume * close,
+      volume,
+      quoteVolume: volume * close,
     };
   });
 
@@ -516,4 +650,25 @@ function buildSeries(input: Array<{ start: number; end: number; length: number }
   }
 
   return values;
+}
+
+function buildVolumeSeries(length: number, latestVolume: number, baselineVolume = 100): number[] {
+  if (length <= 0) {
+    return [];
+  }
+
+  const volumes = Array.from({ length }, () => baselineVolume);
+  volumes[length - 1] = latestVolume;
+  return volumes;
+}
+
+function assertCloseTo(
+  actual: number | null,
+  expected: number,
+  tolerance: number,
+  message: string,
+): void {
+  if (actual === null || Math.abs(actual - expected) > tolerance) {
+    throw new Error(`${message} Expected ${expected} +/- ${tolerance}, received ${String(actual)}.`);
+  }
 }

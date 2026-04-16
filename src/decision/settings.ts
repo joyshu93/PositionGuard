@@ -2,8 +2,8 @@ import type { StrategyInputs, StrategySettings } from "../domain/types.js";
 
 export const DEFAULT_STRATEGY_SETTINGS: StrategySettings = {
   minimumTradeValueKrw: 5_000,
-  entryAllocation: 0.25,
-  addAllocation: 0.15,
+  entryAllocation: 0.30,
+  addAllocation: 0.18,
   reduceFraction: 0.33,
   perAssetMaxAllocation: 0.45,
   totalPortfolioMaxExposure: 0.75,
