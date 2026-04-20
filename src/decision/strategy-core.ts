@@ -294,6 +294,7 @@ function decideReduceOrHold(input: {
     confirmationSatisfied: false,
     reentryPenaltyApplied: false,
     alertReason: "REDUCE_REVIEW_REQUIRED",
+    plannedReduceFraction: action === "EXIT" ? 1 : plan.reduceFraction,
   });
 }
 
@@ -413,6 +414,7 @@ function buildStrategyDecisionCore(input: {
   confirmationSatisfied: boolean;
   reentryPenaltyApplied: boolean;
   alertReason: ActionNeededReason;
+  plannedReduceFraction?: number | null;
 }): StrategyDecisionCore {
   const diagnostics = buildDiagnostics({
     context: input.context,
@@ -438,9 +440,11 @@ function buildStrategyDecisionCore(input: {
     signalQuality: input.signalQuality,
     exposureGuardrails: input.exposureGuardrails,
     executionGuide: buildExecutionGuide(
+      input.context,
       input.action,
       input.analysis,
-      input.context.strategy.settings,
+      input.exposureGuardrails,
+      input.plannedReduceFraction ?? null,
       resolveUserLocale(input.context.user.locale ?? null),
     ),
     diagnostics,
@@ -448,22 +452,26 @@ function buildStrategyDecisionCore(input: {
 }
 
 function buildExecutionGuide(
+  context: DecisionContext,
   action: StrategyAction,
   analysis: PositionStructureAnalysis,
-  settings: StrategySettings,
+  exposureGuardrails: StrategyExposureGuardrails,
+  plannedReduceFraction: number | null,
   locale: "ko" | "en",
 ): ExecutionGuide | null {
   const zone = referenceZone(analysis);
   const invalidationLevel = analysis.invalidationLevel;
+  const settings = context.strategy.settings;
 
   if (action === "ENTRY") {
+    const sizing = getEffectiveBuySizing(context, exposureGuardrails, settings.entryAllocation);
     return {
       planType: "ENTRY",
       setupType: analysis.entryPath === "RECLAIM" ? "RECLAIM_ENTRY" : "PULLBACK_ENTRY",
       entryZoneLow: zone.low,
       entryZoneHigh: zone.high,
-      initialSizePctOfCash: Math.round(settings.entryAllocation * 100),
-      maxTotalSizePctOfCash: Math.round(settings.perAssetMaxAllocation * 100),
+      initialSizePctOfCash: sizing.initialSizePctOfCash,
+      remainingBuyCapacityPctOfCash: sizing.remainingBuyCapacityPctOfCash,
       reducePctOfPosition: null,
       invalidationLevel,
       invalidationRuleText: invalidationLevel === null
@@ -488,13 +496,14 @@ function buildExecutionGuide(
   }
 
   if (action === "ADD") {
+    const sizing = getEffectiveBuySizing(context, exposureGuardrails, settings.addAllocation);
     return {
       planType: "ADD_BUY",
       setupType: analysis.entryPath === "RECLAIM" ? "STRENGTH_ADD" : "PULLBACK_ADD",
       entryZoneLow: zone.low,
       entryZoneHigh: zone.high,
-      initialSizePctOfCash: Math.round(settings.addAllocation * 100),
-      maxTotalSizePctOfCash: Math.round(settings.perAssetMaxAllocation * 100),
+      initialSizePctOfCash: sizing.initialSizePctOfCash,
+      remainingBuyCapacityPctOfCash: sizing.remainingBuyCapacityPctOfCash,
       reducePctOfPosition: null,
       invalidationLevel,
       invalidationRuleText: invalidationLevel === null
@@ -525,8 +534,11 @@ function buildExecutionGuide(
       entryZoneLow: zone.low,
       entryZoneHigh: zone.high,
       initialSizePctOfCash: null,
-      maxTotalSizePctOfCash: null,
-      reducePctOfPosition: action === "EXIT" ? 100 : Math.round(settings.reduceFraction * 100),
+      remainingBuyCapacityPctOfCash: null,
+      reducePctOfPosition: toConservativePercent(
+        plannedReduceFraction ?? (action === "EXIT" ? 1 : settings.reduceFraction),
+        1,
+      ),
       invalidationLevel,
       invalidationRuleText: invalidationLevel === null
         ? locale === "ko"
@@ -554,6 +566,41 @@ function buildExecutionGuide(
   }
 
   return null;
+}
+
+function getEffectiveBuySizing(
+  context: DecisionContext,
+  exposureGuardrails: StrategyExposureGuardrails,
+  defaultAllocation: number,
+): { initialSizePctOfCash: number | null; remainingBuyCapacityPctOfCash: number | null } {
+  const availableCash = Math.max(0, context.accountState?.availableCash ?? 0);
+  if (availableCash <= 0) {
+    return {
+      initialSizePctOfCash: null,
+      remainingBuyCapacityPctOfCash: null,
+    };
+  }
+
+  const remainingBuyCapacityValue = Math.max(0, Math.min(
+    availableCash,
+    exposureGuardrails.remainingAssetCapacity,
+    exposureGuardrails.remainingPortfolioCapacity,
+  ));
+  const initialStageValue = Math.min(availableCash * defaultAllocation, remainingBuyCapacityValue);
+
+  return {
+    initialSizePctOfCash: toConservativePercent(initialStageValue, availableCash),
+    remainingBuyCapacityPctOfCash: toConservativePercent(remainingBuyCapacityValue, availableCash),
+  };
+}
+
+function toConservativePercent(value: number, total: number): number | null {
+  if (!(value > 0) || !(total > 0)) {
+    return null;
+  }
+
+  const rawPercent = (value / total) * 100;
+  return Math.floor((rawPercent + Number.EPSILON) * 10) / 10;
 }
 function buildDiagnostics(input: {
   context: DecisionContext;

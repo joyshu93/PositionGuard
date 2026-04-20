@@ -344,8 +344,8 @@ Current coaching behavior is intentionally narrow and rule-based. Recent tuning 
 - `sell review` / `exit plan review`: these phrases may appear inside reduce-side coaching when support has failed materially, but they remain coaching-only and non-execution framed
 - actionable alerts may include:
   - where the review zone sits
-  - how much of recorded cash to stage first
-  - maximum staged allocation guidance
+  - how much of currently available cash to stage first
+  - how much additional buy capacity remains against the current available-cash and exposure-cap limits
   - how much of the recorded position to reduce
   - what invalidates the idea
   - whether chasing is forbidden
@@ -407,7 +407,9 @@ Recent conservative refinements in that flow:
 
 - pullback and reclaim / continuation setups are handled separately so valid reclaim participation is not auto-blocked by every upper-range condition
 - breakdown and invalidation lean on timeframe closes and ATR-buffered support failure rather than a single live-price wick
-- staged sizing defaults were eased slightly so record-only coaching can start from 0.30 of cash on `ENTRY` and 0.18 of cash on `ADD_BUY`
+- staged sizing defaults were eased slightly so record-only coaching can start from 0.30 of currently available cash on `ENTRY` and 0.18 of currently available cash on `ADD_BUY`
+- buy-side guidance now clips both the first staged size and the remaining buy-capacity line against the tighter of current available cash, the per-asset cap, and the total portfolio exposure cap
+- reduce-side guidance now surfaces the actual staged reduction fraction chosen by the active weakening branch instead of always echoing the base default
 - constructive 1h volume recovery now allows a minimal ratio lift of `1.005` when the latest completed 1h close is strictly above the prior close, while the 4h branch remains conservative
 - intermediate recovery regimes such as `EARLY_RECOVERY` and `RECLAIM_ATTEMPT` sit between outright bull trend and weak downtrend
 - reduce-side confirmation now prefers confirmed structure damage plus supporting weakness instead of reacting to a single RSI or MACD wobble

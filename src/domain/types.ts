@@ -238,7 +238,7 @@ export interface ExecutionGuide {
   entryZoneLow: number | null;
   entryZoneHigh: number | null;
   initialSizePctOfCash: number | null;
-  maxTotalSizePctOfCash: number | null;
+  remainingBuyCapacityPctOfCash: number | null;
   reducePctOfPosition: number | null;
   invalidationLevel: number | null;
   invalidationRuleText: string;

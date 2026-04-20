@@ -122,7 +122,7 @@ Optional structured coaching fields:
   - `entryZoneLow`
   - `entryZoneHigh`
   - `initialSizePctOfCash`
-  - `maxTotalSizePctOfCash`
+  - `remainingBuyCapacityPctOfCash`
   - `reducePctOfPosition`
   - `invalidationLevel`
   - `invalidationRuleText`
@@ -194,7 +194,9 @@ Decision summaries and reasons should read like conservative coaching, not execu
 - `summary` should give a short, explicit coaching takeaway.
 - `reasons` should explain regime, setup, trigger, invalidation, or risk in plain language.
 - `executionGuide` may provide explicit record-only coaching detail about where to act, how much to stage, what invalidates the idea, and whether chasing is forbidden.
-- current staged sizing defaults are slightly less cash conservative once structure is already approved: `ENTRY` guidance starts around `0.30` of cash and `ADD_BUY` guidance can use `0.18` of cash as the default staged add size
+- current staged sizing defaults are slightly less cash conservative once structure is already approved: `ENTRY` guidance starts around `0.30` of currently available cash and `ADD_BUY` guidance can use `0.18` of currently available cash as the default staged add size
+- buy-side coaching should cap both `initialSizePctOfCash` and `remainingBuyCapacityPctOfCash` against the tighter of current available cash, the per-asset exposure cap, and the total portfolio exposure cap
+- reduce-side coaching should expose the actual staged `reducePctOfPosition` selected by the current weakening branch rather than always echoing the base default
 - explicit evidence scores may be used internally, but they should stay transparent and inspectable rather than predictive or discretionary.
 - `ACTION_NEEDED` should stay narrow and only cover manual correction, contradictory state, repeated operational failure, or clear invalidation/risk escalation.
 - The rule-based engine may use `ACTION_NEEDED` directly for risk review when structure weakens materially, while the temporary alert policy remains available for setup and operational failures.

@@ -230,7 +230,7 @@ assertEqual(
 );
 assert(
   immediateEntryDecision.alert?.message.includes("Action zone:")
-    && immediateEntryDecision.alert?.message.includes("First staged size:")
+    && immediateEntryDecision.alert?.message.includes("First staged size (available cash):")
     && immediateEntryDecision.alert?.message.includes("Invalidation:")
     && immediateEntryDecision.alert?.message.includes("Chase guard:"),
   "Immediate entry alerts should include structured execution guidance.",
@@ -239,6 +239,11 @@ assertEqual(
   immediateEntryDecision.executionGuide?.initialSizePctOfCash ?? null,
   30,
   "Entry execution guidance should reflect the slightly eased default staged size.",
+);
+assertEqual(
+  immediateEntryDecision.executionGuide?.remainingBuyCapacityPctOfCash ?? null,
+  45,
+  "Entry execution guidance should expose the remaining buy capacity against current available cash.",
 );
 
 const immediateAddDecision = runDecisionEngine(
@@ -272,6 +277,49 @@ assertEqual(
   immediateAddDecision.executionGuide?.initialSizePctOfCash ?? null,
   18,
   "Add execution guidance should reflect the slightly eased default staged add size.",
+);
+assert(
+  immediateAddDecision.alert?.message.includes("Remaining buy capacity (available cash):"),
+  "Add execution alerts should explain the remaining buy capacity against current available cash.",
+);
+
+const cappedAddDecision = runDecisionEngine(
+  buildDecisionContext({
+    userState: withPositionState({
+      quantity: 0.25,
+      averageEntryPrice: 150,
+    }),
+    asset: "BTC",
+    marketSnapshot: bullishPullbackSnapshot,
+    generatedAt: "2026-01-01T01:00:00.000Z",
+    strategy: {
+      ...buildDefaultStrategyInputs(),
+      portfolio: {
+        totalEquity: 1_700_000,
+        assetMarketValue: 700_000,
+        totalExposureValue: 700_000,
+        assetExposureRatio: 700_000 / 1_700_000,
+        totalExposureRatio: 700_000 / 1_700_000,
+      },
+    },
+  }),
+);
+
+assertCloseTo(
+  cappedAddDecision.executionGuide?.initialSizePctOfCash ?? null,
+  6.5,
+  0.0001,
+  "Add execution guidance should cap the first staged size to the remaining buy capacity.",
+);
+assertCloseTo(
+  cappedAddDecision.executionGuide?.remainingBuyCapacityPctOfCash ?? null,
+  6.5,
+  0.0001,
+  "Add execution guidance should surface the remaining buy capacity against available cash.",
+);
+assert(
+  cappedAddDecision.alert?.message.includes("Remaining buy capacity (available cash): 6.5%"),
+  "Capped add alerts should surface the clipped buy-capacity percentage.",
 );
 
 const deferredEntryDecision = runDecisionEngine(
@@ -520,7 +568,7 @@ const koreanConfirmedEntryDecision = runDecisionEngine(
 assert(
   koreanConfirmedEntryDecision.summary.includes("진입 검토")
     && koreanConfirmedEntryDecision.alert?.message.includes("행동 구간:")
-    && koreanConfirmedEntryDecision.alert?.message.includes("첫 분할:")
+    && koreanConfirmedEntryDecision.alert?.message.includes("첫 분할(남은 예수금 기준):")
     && koreanConfirmedEntryDecision.alert?.message.includes("무효화:")
     && koreanConfirmedEntryDecision.alert?.message.includes("추격 금지:")
     && koreanConfirmedEntryDecision.alert?.message.includes("진입 무효화 기준")

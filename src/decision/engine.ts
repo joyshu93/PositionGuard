@@ -115,13 +115,13 @@ function buildAlertMessage(
           `\uD589\uB3D9 \uAD6C\uAC04: ${zone}`,
           guide.initialSizePctOfCash === null
             ? null
-            : `\uCCAB \uBD84\uD560: ${formatPercent(guide.initialSizePctOfCash)}`,
-          guide.maxTotalSizePctOfCash === null
+            : `\uCCAB \uBD84\uD560(\uB0A8\uC740 \uC608\uC218\uAE08 \uAE30\uC900): ${formatPercent(guide.initialSizePctOfCash)}`,
+          guide.remainingBuyCapacityPctOfCash === null
             ? null
-            : `\uCD5C\uB300 \uCD1D\uBE44\uC911: ${formatPercent(guide.maxTotalSizePctOfCash)}`,
+            : `\uCD94\uAC00 \uAC00\uB2A5 \uD55C\uB3C4(\uB0A8\uC740 \uC608\uC218\uAE08 \uAE30\uC900): ${formatPercent(guide.remainingBuyCapacityPctOfCash)}`,
           guide.reducePctOfPosition === null
             ? null
-            : `\uCD95\uC18C \uBE44\uC911: ${formatPercent(guide.reducePctOfPosition)}`,
+            : `\uCD95\uC18C \uBE44\uC911(\uBCF4\uC720 \uC218\uB7C9 \uAE30\uC900): ${formatPercent(guide.reducePctOfPosition)}`,
           `\uBB34\uD6A8\uD654: ${guide.invalidationRuleText}`,
           `\uCD94\uACA9 \uAE08\uC9C0: ${guide.chaseGuardText}`,
           guide.cautionText ? `\uC8FC\uC758: ${guide.cautionText}` : null,
@@ -131,13 +131,13 @@ function buildAlertMessage(
           `Action zone: ${zone}`,
           guide.initialSizePctOfCash === null
             ? null
-            : `First staged size: ${formatPercent(guide.initialSizePctOfCash)}`,
-          guide.maxTotalSizePctOfCash === null
+            : `First staged size (available cash): ${formatPercent(guide.initialSizePctOfCash)}`,
+          guide.remainingBuyCapacityPctOfCash === null
             ? null
-            : `Max total size: ${formatPercent(guide.maxTotalSizePctOfCash)}`,
+            : `Remaining buy capacity (available cash): ${formatPercent(guide.remainingBuyCapacityPctOfCash)}`,
           guide.reducePctOfPosition === null
             ? null
-            : `Reduce amount: ${formatPercent(guide.reducePctOfPosition)}`,
+            : `Reduce amount (position size): ${formatPercent(guide.reducePctOfPosition)}`,
           `Invalidation: ${guide.invalidationRuleText}`,
           `Chase guard: ${guide.chaseGuardText}`,
           guide.cautionText ? `Caution: ${guide.cautionText}` : null,
@@ -166,7 +166,10 @@ function formatGuideZone(
 }
 
 function formatPercent(value: number): string {
-  return `${Math.max(0, value)}%`;
+  const normalized = Math.max(0, value);
+  return Number.isInteger(normalized)
+    ? `${normalized}%`
+    : `${normalized.toFixed(1)}%`;
 }
 
 function formatMoney(value: number): string {
