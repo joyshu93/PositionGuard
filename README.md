@@ -407,8 +407,9 @@ Recent conservative refinements in that flow:
 
 - pullback and reclaim / continuation setups are handled separately so valid reclaim participation is not auto-blocked by every upper-range condition
 - breakdown and invalidation lean on timeframe closes and ATR-buffered support failure rather than a single live-price wick
-- staged sizing defaults were eased slightly so record-only coaching can start from 0.30 of currently available cash on `ENTRY` and 0.18 of currently available cash on `ADD_BUY`
-- buy-side guidance now clips both the first staged size and the remaining buy-capacity line against the tighter of current available cash, the per-asset cap, and the total portfolio exposure cap
+- staged sizing defaults remain modest, but buy-side coaching now derives the initial budget from total equity instead of shrinking only from currently available cash: `ENTRY` still starts from `0.30` and `ADD_BUY` from `0.18`, then both are clipped by available cash and exposure guardrails
+- buy-side guidance now treats the total portfolio exposure cap as the primary reserve policy, while the per-asset cap remains a concentration backstop that can widen for clearly strong trend / reclaim structure
+- the base per-asset exposure cap remains `45%`, while clearly strong trend / reclaim structure can use a `60%` concentration backstop before the total portfolio cap still limits overall exposure
 - reduce-side guidance now surfaces the actual staged reduction fraction chosen by the active weakening branch instead of always echoing the base default
 - constructive 1h volume recovery now allows a minimal ratio lift of `1.005` when the latest completed 1h close is strictly above the prior close, while the 4h branch remains conservative
 - intermediate recovery regimes such as `EARLY_RECOVERY` and `RECLAIM_ATTEMPT` sit between outright bull trend and weak downtrend

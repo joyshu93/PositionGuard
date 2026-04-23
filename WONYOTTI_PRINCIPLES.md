@@ -12,6 +12,7 @@ The system should respect larger directional context before considering tactics.
 
 ### 2. Survival First
 Capital preservation and staying mentally functional outrank activity. The bot should prefer fewer actions, clearer invalidation, and lower regret paths over aggressive optimization.
+That survival framing should be explained through cash reserve and total exposure policy first, not through a simplistic equal-split-by-asset mental model.
 
 ### 3. Price / Levels / Structure Over News
 The primary evidence model is market structure from public price data. News, narratives, and opinion are secondary and are not inputs in this MVP.
@@ -30,6 +31,7 @@ Every future actionable setup should define what breaks the idea before it empha
 
 ### 8. Rotational Management
 Position management may later involve staged adds, partial trims, and cash preservation. The architecture should support stateful coaching around rotation rather than all-in/all-out framing.
+Those stages should be budget-first: total exposure is the primary reserve anchor, while per-asset caps act as concentration backstops rather than equal-slot budgeting rules.
 
 ### 9. Spot-First Thinking
 This product is for spot investors, not leverage traders. Any future logic should assume no forced liquidation mechanics and should emphasize inventory quality, cash reserves, and pacing.

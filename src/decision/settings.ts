@@ -6,6 +6,7 @@ export const DEFAULT_STRATEGY_SETTINGS: StrategySettings = {
   addAllocation: 0.18,
   reduceFraction: 0.33,
   perAssetMaxAllocation: 0.45,
+  strongTrendPerAssetMaxAllocation: 0.60,
   totalPortfolioMaxExposure: 0.75,
 };
 

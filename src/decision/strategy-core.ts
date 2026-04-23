@@ -131,7 +131,7 @@ export function buildStrategyDecision(context: DecisionContext): StrategyDecisio
   const position = context.positionState;
   const quantity = Math.max(0, position?.quantity ?? 0);
   const analysis = analyzePositionStructure(context.marketSnapshot, position?.averageEntryPrice ?? 0);
-  const exposureGuardrails = buildExposureGuardrails(context.strategy.portfolio, context.strategy.settings);
+  const exposureGuardrails = buildExposureGuardrails(context.strategy.portfolio, context.strategy.settings, analysis);
   const bullishScore = computeBullishScore(analysis) - getReentryPenalty(context, analysis, quantity);
   const weaknessScore = computeWeaknessScore(analysis);
   const qualityBucket = toQualityBucket(bullishScore);
@@ -586,7 +586,8 @@ function getEffectiveBuySizing(
     exposureGuardrails.remainingAssetCapacity,
     exposureGuardrails.remainingPortfolioCapacity,
   ));
-  const initialStageValue = Math.min(availableCash * defaultAllocation, remainingBuyCapacityValue);
+  const budgetBaseValue = Math.max(0, context.strategy.portfolio.totalEquity);
+  const initialStageValue = Math.min(budgetBaseValue * defaultAllocation, remainingBuyCapacityValue);
 
   return {
     initialSizePctOfCash: toConservativePercent(initialStageValue, availableCash),
@@ -691,17 +692,41 @@ function buildDiagnostics(input: {
 function buildExposureGuardrails(
   portfolio: StrategyPortfolioSnapshot,
   settings: StrategySettings,
+  analysis: PositionStructureAnalysis,
 ): StrategyExposureGuardrails {
   const totalEquity = Math.max(0, portfolio.totalEquity);
-  const perAssetLimitValue = totalEquity * settings.perAssetMaxAllocation;
+  const effectivePerAssetMaxAllocation = getEffectivePerAssetMaxAllocation(settings, analysis);
+  const perAssetLimitValue = totalEquity * effectivePerAssetMaxAllocation;
   const totalExposureLimitValue = totalEquity * settings.totalPortfolioMaxExposure;
 
   return {
-    perAssetMaxAllocation: settings.perAssetMaxAllocation,
+    perAssetMaxAllocation: effectivePerAssetMaxAllocation,
     totalPortfolioMaxExposure: settings.totalPortfolioMaxExposure,
     remainingAssetCapacity: Math.max(0, perAssetLimitValue - portfolio.assetMarketValue),
     remainingPortfolioCapacity: Math.max(0, totalExposureLimitValue - portfolio.totalExposureValue),
   };
+}
+
+function getEffectivePerAssetMaxAllocation(
+  settings: StrategySettings,
+  analysis: PositionStructureAnalysis,
+): number {
+  if (
+    analysis.invalidationState === "CLEAR"
+    && !analysis.upperRangeChase
+    && analysis.breakdownPressureScore <= 1
+    && analysis.trendAlignmentScore >= 4
+    && analysis.recoveryQualityScore >= 4
+    && (
+      analysis.regime === "BULL_TREND"
+      || analysis.regime === "PULLBACK_IN_UPTREND"
+      || analysis.entryPath === "RECLAIM"
+    )
+  ) {
+    return Math.max(settings.perAssetMaxAllocation, settings.strongTrendPerAssetMaxAllocation);
+  }
+
+  return settings.perAssetMaxAllocation;
 }
 
 function hasBullishRiskCapacity(context: DecisionContext, guardrails: StrategyExposureGuardrails): boolean {

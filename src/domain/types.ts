@@ -184,6 +184,7 @@ export interface StrategySettings {
   addAllocation: number;
   reduceFraction: number;
   perAssetMaxAllocation: number;
+  strongTrendPerAssetMaxAllocation: number;
   totalPortfolioMaxExposure: number;
 }
 

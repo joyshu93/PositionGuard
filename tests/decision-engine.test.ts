@@ -76,6 +76,11 @@ assertEqual(
   "Other strategy defaults should remain unchanged.",
 );
 assertEqual(
+  defaultStrategySettings.strongTrendPerAssetMaxAllocation,
+  0.60,
+  "Strong trend concentration backstop should be explicit in the default strategy settings.",
+);
+assertEqual(
   defaultStrategySettings.totalPortfolioMaxExposure,
   0.75,
   "Other strategy defaults should remain unchanged.",
@@ -276,11 +281,39 @@ assertEqual(
 assertEqual(
   immediateAddDecision.executionGuide?.initialSizePctOfCash ?? null,
   18,
-  "Add execution guidance should reflect the slightly eased default staged add size.",
+  "Add execution guidance should stay at the default ratio when total equity only slightly exceeds available cash.",
 );
 assert(
   immediateAddDecision.alert?.message.includes("Remaining buy capacity (available cash):"),
   "Add execution alerts should explain the remaining buy capacity against current available cash.",
+);
+
+const elevatedEquityAddDecision = runDecisionEngine(
+  buildDecisionContext({
+    userState: withPositionState({
+      quantity: 0.25,
+      averageEntryPrice: 150,
+    }),
+    asset: "BTC",
+    marketSnapshot: bullishPullbackSnapshot,
+    strategy: {
+      ...buildDefaultStrategyInputs(),
+      portfolio: {
+        totalEquity: 1_300_000,
+        assetMarketValue: 200_000,
+        totalExposureValue: 200_000,
+        assetExposureRatio: 200_000 / 1_300_000,
+        totalExposureRatio: 200_000 / 1_300_000,
+      },
+    },
+    generatedAt: "2026-01-01T01:00:00.000Z",
+  }),
+);
+
+assertEqual(
+  elevatedEquityAddDecision.executionGuide?.initialSizePctOfCash ?? null,
+  23.4,
+  "Add execution guidance should budget from total equity first when the portfolio budget is meaningfully above available cash.",
 );
 
 const cappedAddDecision = runDecisionEngine(
