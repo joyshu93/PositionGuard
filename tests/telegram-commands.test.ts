@@ -471,7 +471,7 @@ assert(
 );
 assert(
   trackedAssetText.includes("Tracked assets recorded: BTC, ETH") &&
-    trackedAssetText.includes("State is record-only. No trade execution is performed."),
+    trackedAssetText.includes("This only updates your record. No trades are executed."),
   "Tracked-asset callback should stay record-only.",
 );
 
@@ -819,9 +819,9 @@ if (alertAction && alertAction.kind === "sendMessage") {
 }
 
 assert(
-  alertText.includes("Reason: STATE_UPDATE_REMINDER") &&
-  alertText.includes("Cooldown until: 2026-01-01 18:00:00 KST"),
-  "/lastalert should expose cooldown visibility for debugging.",
+  alertText.includes("Alert type: BTC state update reminder") &&
+  alertText.includes("Next send time: 2026-01-01 18:00:00 KST"),
+  "/lastalert should expose a plain-language alert type and cooldown time.",
 );
 
 const lastDecisionActions = await routeCommand(
@@ -846,11 +846,11 @@ if (lastDecisionAction && lastDecisionAction.kind === "sendMessage") {
 assert(
   lastDecisionText.includes("Last decision:") &&
     lastDecisionText.includes("Tracked assets: BTC, ETH") &&
-    lastDecisionText.includes("status ACTION_NEEDED") &&
-    lastDecisionText.includes("summary Manual setup is incomplete.") &&
-    lastDecisionText.includes("regime PULLBACK_IN_UPTREND | trigger CONFIRMED | invalidation CLEAR") &&
-    lastDecisionText.includes("Operational only."),
-  "/lastdecision should render a compact operational summary.",
+    lastDecisionText.includes("BTC | action needed") &&
+    lastDecisionText.includes("Summary: Manual setup is incomplete.") &&
+    lastDecisionText.includes("Market structure: pullback in uptrend | trigger: confirmed | invalidation: clear") &&
+    lastDecisionText.includes("plain-language summary"),
+  "/lastdecision should render a plain-language decision summary.",
 );
 
 const hourlyHealthActions = await routeCommand(
@@ -874,14 +874,14 @@ if (hourlyHealthAction && hourlyHealthAction.kind === "sendMessage") {
 
 assert(
   hourlyHealthText.includes("Hourly health:") &&
-    hourlyHealthText.includes("Latest decision: ACTION_NEEDED | 2026-01-01 12:00:00 KST") &&
-    hourlyHealthText.includes("Current market data: fetch_failure") &&
+    hourlyHealthText.includes("Latest review: action needed | 2026-01-01 12:00:00 KST") &&
+    hourlyHealthText.includes("Market data status: fetch failure") &&
     hourlyHealthText.includes("Recent market-data failures: 3") &&
     hourlyHealthText.includes("Last failure reason: Upbit request failed (502 Bad Gateway): upstream timeout") &&
-    hourlyHealthText.includes("Structure: regime PULLBACK_IN_UPTREND | trigger CONFIRMED | invalidation CLEAR") &&
-    hourlyHealthText.includes("Reminder: eligible yes | sent no | repeated 2 | suppressed cooldown") &&
-    hourlyHealthText.includes("Suppression: cooldown 2 | sleep 1 | setup 4"),
-  "/hourlyhealth should render compact operational health details.",
+    hourlyHealthText.includes("Market structure: pullback in uptrend | trigger: confirmed | invalidation: clear") &&
+    hourlyHealthText.includes("Reminder status: Repeated 2 | Not sent | Reminder eligible | cooldown") &&
+    hourlyHealthText.includes("Alert holds: cooldown 2 | sleep 1 | setup blocked 4"),
+  "/hourlyhealth should render a plain-language health summary.",
 );
 
 const unsupportedReminderHealthActions = await routeCommand(
@@ -938,7 +938,7 @@ if (
 }
 
 assert(
-  unsupportedReminderHealthText.includes("Reminder: not applicable") &&
+  unsupportedReminderHealthText.includes("Reminder status: not applicable") &&
     !unsupportedReminderHealthText.includes("unsupported_reason"),
   "/hourlyhealth should hide internal unsupported_reason values from user-facing reminder text.",
 );
@@ -977,7 +977,7 @@ assert(
   callbackInspectionActions.some(
     (action) => action.kind === "sendMessage" && action.text.includes("Last decision:"),
   ),
-  "inspection callbacks should route to the compact decision summary.",
+  "inspection callbacks should route to the plain-language decision summary.",
 );
 
 const invalidActions = await routeCommand(
@@ -1027,7 +1027,7 @@ assert(
     asset: "BTC",
     summary: "BTC structure is weakening; review invalidation and cash risk now.",
     nextStep: "Review the invalidation level and whether the recorded spot size still fits your plan.",
-  }).includes("ACTION NEEDED: BTC risk review is needed"),
+  }).includes("Review needed: BTC risk review is needed"),
   "Risk-review alerts should render a clear coaching headline without execution language.",
 );
 
@@ -1050,7 +1050,7 @@ assert(
     asset: "ETH",
     summary: "ETH pullback may justify a staged add-buy review.",
     nextStep: "Only consider it if the invalidation level is clear and the pullback is not turning into breakdown.",
-  }).includes("ACTION NEEDED: ETH add-buy review is needed"),
+  }).includes("Review needed: ETH add-buy review is needed"),
   "Add-buy review alerts should render a clear non-execution headline.",
 );
 
@@ -1061,7 +1061,7 @@ assert(
     asset: "BTC",
     summary: "BTC structure is weakening; review partial reduction or exit plan.",
     nextStep: "Review the invalidation level before deciding whether to reduce or step aside.",
-  }).includes("ACTION NEEDED: BTC reduce review is needed"),
+  }).includes("Review needed: BTC reduce review is needed"),
   "Reduce-review alerts should render a clear non-execution headline.",
 );
 
@@ -1072,7 +1072,7 @@ assert(
     asset: "BTC",
     summary: "If you already bought or sold, update your recorded position.",
     nextStep: "Use /setposition for inventory changes and /setcash if available cash changed.",
-  }).includes("ACTION NEEDED: BTC state update reminder is needed"),
+  }).includes("Review needed: BTC state update reminder is needed"),
   "State-update reminder alerts should render a dedicated non-execution headline.",
 );
 

@@ -193,8 +193,8 @@ assert(
   "Status output should surface recent alert history.",
 );
 assert(
-  statusWithAlerts.includes("SENT setup-incomplete"),
-  "Status output should include a compact recent alert summary.",
+  statusWithAlerts.includes("Sent | Market review alert"),
+  "Status output should include a plain-language recent alert summary.",
 );
 
 const btcOnlyStatus = renderStatusMessage({

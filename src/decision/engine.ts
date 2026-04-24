@@ -108,42 +108,88 @@ function buildAlertMessage(
   }
 
   const zone = formatGuideZone(guide.entryZoneLow, guide.entryZoneHigh, locale);
+  const buyAmountLines = buildBuyAmountLines(
+    locale,
+    Math.max(0, context.accountState?.availableCash ?? 0),
+    guide.initialSizePctOfCash,
+    guide.remainingBuyCapacityPctOfCash,
+  );
   const lines =
     locale === "ko"
       ? [
           strategy.summary,
-          `\uD589\uB3D9 \uAD6C\uAC04: ${zone}`,
-          guide.initialSizePctOfCash === null
-            ? null
-            : `\uCCAB \uBD84\uD560(\uB0A8\uC740 \uC608\uC218\uAE08 \uAE30\uC900): ${formatPercent(guide.initialSizePctOfCash)}`,
-          guide.remainingBuyCapacityPctOfCash === null
-            ? null
-            : `\uCD94\uAC00 \uAC00\uB2A5 \uD55C\uB3C4(\uB0A8\uC740 \uC608\uC218\uAE08 \uAE30\uC900): ${formatPercent(guide.remainingBuyCapacityPctOfCash)}`,
+          `\uAC80\uD1A0 \uAD6C\uAC04: ${zone}`,
+          ...buyAmountLines,
           guide.reducePctOfPosition === null
             ? null
-            : `\uCD95\uC18C \uBE44\uC911(\uBCF4\uC720 \uC218\uB7C9 \uAE30\uC900): ${formatPercent(guide.reducePctOfPosition)}`,
-          `\uBB34\uD6A8\uD654: ${guide.invalidationRuleText}`,
-          `\uCD94\uACA9 \uAE08\uC9C0: ${guide.chaseGuardText}`,
+            : `\uAC80\uD1A0 \uBE44\uC911: \uAE30\uB85D \uAE30\uC900 \uBCF4\uC720 \uC218\uB7C9\uC758 ${formatPercent(guide.reducePctOfPosition)}`,
+          `\uBB34\uD6A8\uD654 \uAE30\uC900: ${guide.invalidationRuleText}`,
+          `\uCD94\uACA9 \uC8FC\uC758: ${guide.chaseGuardText}`,
           guide.cautionText ? `\uC8FC\uC758: ${guide.cautionText}` : null,
         ]
       : [
           strategy.summary,
-          `Action zone: ${zone}`,
-          guide.initialSizePctOfCash === null
-            ? null
-            : `First staged size (available cash): ${formatPercent(guide.initialSizePctOfCash)}`,
-          guide.remainingBuyCapacityPctOfCash === null
-            ? null
-            : `Remaining buy capacity (available cash): ${formatPercent(guide.remainingBuyCapacityPctOfCash)}`,
+          `Review zone: ${zone}`,
+          ...buyAmountLines,
           guide.reducePctOfPosition === null
             ? null
-            : `Reduce amount (position size): ${formatPercent(guide.reducePctOfPosition)}`,
-          `Invalidation: ${guide.invalidationRuleText}`,
-          `Chase guard: ${guide.chaseGuardText}`,
+            : `Review size: about ${formatPercent(guide.reducePctOfPosition)} of the recorded position.`,
+          `Invalidation guide: ${guide.invalidationRuleText}`,
+          `Chase warning: ${guide.chaseGuardText}`,
           guide.cautionText ? `Caution: ${guide.cautionText}` : null,
         ];
 
   return lines.filter((line): line is string => line !== null).join("\n");
+}
+
+function buildBuyAmountLines(
+  locale: "ko" | "en",
+  availableCash: number,
+  initialSizePctOfCash: number | null,
+  remainingBuyCapacityPctOfCash: number | null,
+): string[] {
+  const initialAmount = percentOfCashToAmount(initialSizePctOfCash, availableCash);
+  const remainingAmount = percentOfCashToAmount(remainingBuyCapacityPctOfCash, availableCash);
+
+  if (initialAmount === null && remainingAmount === null) {
+    return [];
+  }
+
+  if (
+    remainingAmount !== null
+    && (initialAmount === null || amountsAreEffectivelyEqual(initialAmount, remainingAmount))
+  ) {
+    return [
+      locale === "ko"
+        ? `\uD604\uC7AC \uAC80\uD1A0 \uAC00\uB2A5\uD55C \uCD5C\uB300 \uAE08\uC561: \uC57D ${formatMoney(remainingAmount)} KRW`
+        : `Current maximum review amount: about ${formatMoney(remainingAmount)} KRW`,
+    ];
+  }
+
+  return [
+    initialAmount === null
+      ? null
+      : locale === "ko"
+        ? `1\uCC28 \uAC80\uD1A0 \uAE08\uC561: \uC57D ${formatMoney(initialAmount)} KRW`
+        : `First review amount: about ${formatMoney(initialAmount)} KRW`,
+    remainingAmount === null
+      ? null
+      : locale === "ko"
+        ? `\uD604\uC7AC \uCD5C\uB300 \uCD94\uAC00 \uAC00\uB2A5 \uAE08\uC561: \uC57D ${formatMoney(remainingAmount)} KRW`
+        : `Current maximum additional amount: about ${formatMoney(remainingAmount)} KRW`,
+  ].filter((line): line is string => line !== null);
+}
+
+function percentOfCashToAmount(percent: number | null, availableCash: number): number | null {
+  if (percent === null || !(availableCash > 0)) {
+    return null;
+  }
+
+  return Math.max(0, (percent / 100) * availableCash);
+}
+
+function amountsAreEffectivelyEqual(left: number, right: number): boolean {
+  return Math.abs(left - right) < 1;
 }
 
 function formatGuideZone(

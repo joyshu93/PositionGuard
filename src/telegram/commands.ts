@@ -6,7 +6,7 @@ import type {
   PortfolioSnapshotImportData,
 } from "../image-import/types.js";
 import type { StrategyMemoryResetScope } from "../types/persistence.js";
-import { formatAvailability, formatCompactTimestampForLocale, formatLocaleName, formatNumberForLocale, getMessages, resolveUserLocale } from "../i18n/index.js";
+import { formatCompactTimestampForLocale, formatLocaleName, formatNumberForLocale, getMessages, resolveUserLocale } from "../i18n/index.js";
 import { formatValidationErrors, validatePositionInput } from "../validation.js";
 import { describeDecisionVerdict } from "../operator-visibility.js";
 import { parseCashAmount, parsePositionArgs, parseSleepModeArg, parseTelegramCallbackAction } from "./parser.js";
@@ -600,15 +600,23 @@ async function handleLastAlert(
       context.chatId,
       [
         messages.command.lastAlertTitle,
-        messages.command.alertReason(snapshot.reason),
+        locale === "ko"
+          ? `알림 종류: ${describeAlertReason(snapshot.reason, snapshot.asset, locale)}`
+          : `Alert type: ${describeAlertReason(snapshot.reason, snapshot.asset, locale)}`,
         messages.command.alertAsset(snapshot.asset ?? messages.booleans.notAvailable),
         messages.command.alertWhen(formatCompactTimestampForLocale(locale, snapshot.sentAt)),
         messages.command.alertSummary(truncateText(snapshot.summary, 120)),
-        messages.command.alertCooldown(
-          snapshot.cooldownUntil
-            ? formatCompactTimestampForLocale(locale, snapshot.cooldownUntil)
-            : messages.booleans.notAvailable,
-        ),
+        locale === "ko"
+          ? `같은 알림 가능 시각: ${
+            snapshot.cooldownUntil
+              ? formatCompactTimestampForLocale(locale, snapshot.cooldownUntil)
+              : messages.booleans.notAvailable
+          }`
+          : `Next send time: ${
+            snapshot.cooldownUntil
+              ? formatCompactTimestampForLocale(locale, snapshot.cooldownUntil)
+              : messages.booleans.notAvailable
+          }`,
       ].join("\n"),
       buildOnboardingKeyboard(locale),
     ),
@@ -1041,8 +1049,10 @@ function renderLastDecisionSnapshot(
   return [
     messages.operator.lastDecisionTitle,
     messages.status.trackedAssets(formatTrackedAssets(snapshot.trackedAssets, locale)),
-    ...snapshot.lines.map((line) => formatDecisionLine(line, locale)),
-    messages.operator.operationalOnly,
+    ...snapshot.lines.flatMap((line, index) => index === 0 ? [formatDecisionLine(line, locale)] : ["", formatDecisionLine(line, locale)]),
+    locale === "ko"
+      ? "이 내용은 최근 시간별 점검 결과를 이해하기 쉽게 풀어쓴 요약입니다."
+      : "This is a plain-language summary of the latest hourly checks.",
   ].join("\n");
 }
 
@@ -1056,7 +1066,7 @@ function renderHourlyHealthSnapshot(
   }
 
   const latestNotification = snapshot.latestNotification
-    ? `${snapshot.latestNotification.deliveryStatus}${snapshot.latestNotification.reasonKey ? ` | ${snapshot.latestNotification.reasonKey}` : ""}${snapshot.latestNotification.suppressedBy ? ` | ${snapshot.latestNotification.suppressedBy}` : ""}${snapshot.latestNotification.sentAt ? ` | ${formatCompactTimestampForLocale(locale, snapshot.latestNotification.sentAt)}` : ""}`
+    ? formatLatestNotificationSummary(snapshot.latestNotification, locale)
     : messages.booleans.none;
 
   const reminderSummary =
@@ -1068,22 +1078,27 @@ function renderHourlyHealthSnapshot(
     messages.operator.hourlyHealthTitle,
     messages.status.trackedAssets(formatTrackedAssets(snapshot.trackedAssets, locale)),
     locale === "ko"
-      ? `\uC900\uBE44\uB3C4: ${snapshot.readiness.isReady ? messages.booleans.ready : messages.booleans.incomplete} | \uD604\uAE08: ${snapshot.readiness.hasCashRecord ? messages.booleans.yes : messages.booleans.no} | \uD3EC\uC9C0\uC158: ${formatTrackedAssets(snapshot.readiness.readyPositionAssets, locale)}`
-      : `Readiness: ${snapshot.readiness.isReady ? "ready" : "blocked"} | cash: ${snapshot.readiness.hasCashRecord ? "yes" : "no"} | positions: ${formatTrackedAssets(snapshot.readiness.readyPositionAssets, locale)}`,
+      ? `준비 상태: ${snapshot.readiness.isReady ? "완료" : "더 입력 필요"}`
+      : `Setup status: ${snapshot.readiness.isReady ? "ready" : "needs more input"}`,
+    locale === "ko"
+      ? `현금 기록: ${snapshot.readiness.hasCashRecord ? "있음" : "없음"} | 포지션 기록: ${formatTrackedAssets(snapshot.readiness.readyPositionAssets, locale)}`
+      : `Cash record: ${snapshot.readiness.hasCashRecord ? "present" : "missing"} | Position records: ${formatTrackedAssets(snapshot.readiness.readyPositionAssets, locale)}`,
     messages.status.missingNextSteps(formatNextSteps(snapshot.readiness.missingItems, locale)),
     latestDecisionSummary,
     ...marketDataLines,
     locale === "ko"
-      ? `\uAD6C\uC870: \uB808\uC9D0 ${snapshot.latestRegime ?? messages.booleans.notAvailable} | \uD2B8\uB9AC\uAC70 ${snapshot.latestTriggerState ?? messages.booleans.notAvailable} | \uBB34\uD6A8\uD654 ${snapshot.latestInvalidationState ?? messages.booleans.notAvailable}`
-      : `Structure: regime ${snapshot.latestRegime ?? messages.booleans.notAvailable} | trigger ${snapshot.latestTriggerState ?? messages.booleans.notAvailable} | invalidation ${snapshot.latestInvalidationState ?? messages.booleans.notAvailable}`,
+      ? `시장 흐름: ${describeRegime(snapshot.latestRegime, locale)} | 확인 신호: ${describeTriggerState(snapshot.latestTriggerState, locale)} | 무효화 기준: ${describeInvalidationState(snapshot.latestInvalidationState, locale)}`
+      : `Market structure: ${describeRegime(snapshot.latestRegime, locale)} | trigger: ${describeTriggerState(snapshot.latestTriggerState, locale)} | invalidation: ${describeInvalidationState(snapshot.latestInvalidationState, locale)}`,
     locale === "ko"
-      ? `\uB9AC\uB9C8\uC778\uB354: ${reminderSummary}`
-      : `Reminder: ${reminderSummary}`,
+      ? `리마인더 상태: ${reminderSummary}`
+      : `Reminder status: ${reminderSummary}`,
     locale === "ko"
-      ? `\uC5B5\uC81C: cooldown ${snapshot.recentCooldownSkipCount} | sleep ${snapshot.recentSleepSuppressionCount} | setup ${snapshot.recentSetupBlockedCount}`
-      : `Suppression: cooldown ${snapshot.recentCooldownSkipCount} | sleep ${snapshot.recentSleepSuppressionCount} | setup ${snapshot.recentSetupBlockedCount}`,
+      ? `알림 보류: 쿨다운 ${snapshot.recentCooldownSkipCount}회 | 수면 ${snapshot.recentSleepSuppressionCount}회 | 설정 미완료 ${snapshot.recentSetupBlockedCount}회`
+      : `Alert holds: cooldown ${snapshot.recentCooldownSkipCount} | sleep ${snapshot.recentSleepSuppressionCount} | setup blocked ${snapshot.recentSetupBlockedCount}`,
     locale === "ko" ? `\uCD5C\uADFC \uC54C\uB9BC: ${latestNotification}` : `Latest alert: ${latestNotification}`,
-    messages.operator.operationalOnly,
+    locale === "ko"
+      ? "이 내용은 최근 점검 흐름을 빠르게 확인하기 위한 요약입니다."
+      : "This is a quick summary of recent hourly processing.",
   ].join("\n");
 }
 
@@ -1092,14 +1107,14 @@ function formatLatestDecisionSummary(
   locale: SupportedLocale,
 ): string {
   const messages = getMessages(locale);
-  const status = snapshot.lastDecisionStatus ?? messages.booleans.none;
+  const status = describeDecisionVerdict(snapshot.lastDecisionStatus, locale);
   const when = snapshot.lastRunAt
     ? formatCompactTimestampForLocale(locale, snapshot.lastRunAt)
     : messages.booleans.notAvailable;
 
   return locale === "ko"
-    ? `\uCD5C\uADFC \uACB0\uC815: ${status} | ${when}`
-    : `Latest decision: ${status} | ${when}`;
+    ? `최근 점검 결과: ${status} | ${when}`
+    : `Latest review: ${status} | ${when}`;
 }
 
 function formatHourlyMarketDataLines(
@@ -1107,20 +1122,20 @@ function formatHourlyMarketDataLines(
   locale: SupportedLocale,
 ): string[] {
   const messages = getMessages(locale);
-  const currentStatus = snapshot.marketDataStatus ?? messages.booleans.none;
+  const currentStatus = describeMarketDataStatus(snapshot.marketDataStatus, locale);
   const lines = [
     locale === "ko"
-      ? `\uD604\uC7AC \uC2DC\uC7A5 \uB370\uC774\uD130: ${currentStatus}`
-      : `Current market data: ${currentStatus}`,
+      ? `시장 데이터 상태: ${currentStatus}`
+      : `Market data status: ${currentStatus}`,
     locale === "ko"
-      ? `\uCD5C\uADFC \uC2DC\uC7A5 \uB370\uC774\uD130 \uC2E4\uD328: ${snapshot.recentMarketFailureCount}\uD68C`
+      ? `최근 데이터 실패: ${snapshot.recentMarketFailureCount}회`
       : `Recent market-data failures: ${snapshot.recentMarketFailureCount}`,
   ];
 
   if (snapshot.latestMarketFailureMessage) {
     lines.push(
       locale === "ko"
-        ? `\uB9C8\uC9C0\uB9C9 \uC2E4\uD328 \uC0AC\uC720: ${truncateText(snapshot.latestMarketFailureMessage, 100)}`
+        ? `마지막 실패 내용: ${truncateText(snapshot.latestMarketFailureMessage, 100)}`
         : `Last failure reason: ${truncateText(snapshot.latestMarketFailureMessage, 100)}`,
     );
   }
@@ -1148,12 +1163,18 @@ function formatReminderSummary(
     locale,
   );
 
-  return (
-    `eligible ${formatAvailability(locale, snapshot.latestReminderEligible === true)} | ` +
-    `sent ${formatAvailability(locale, snapshot.latestReminderSent === true)} | ` +
-    `repeated ${snapshot.latestReminderRepeatedSignalCount ?? messages.booleans.notAvailable}` +
-    `${suppressedBy ? ` | suppressed ${suppressedBy}` : ""}`
-  );
+  return [
+    locale === "ko"
+      ? `반복 ${snapshot.latestReminderRepeatedSignalCount ?? messages.booleans.notAvailable}회`
+      : `Repeated ${snapshot.latestReminderRepeatedSignalCount ?? messages.booleans.notAvailable}`,
+    snapshot.latestReminderSent === true
+      ? locale === "ko" ? "전송됨" : "Sent"
+      : locale === "ko" ? "미전송" : "Not sent",
+    snapshot.latestReminderEligible === true
+      ? locale === "ko" ? "리마인더 대상" : "Reminder eligible"
+      : locale === "ko" ? "아직 리마인더 단계 아님" : "Not at reminder stage",
+    suppressedBy,
+  ].filter((part): part is string => Boolean(part)).join(" | ");
 }
 
 function mapReminderSuppressionReason(
@@ -1184,7 +1205,7 @@ function mapReminderSuppressionReason(
     return locale === "ko" ? "\uC218\uBA74 \uBAA8\uB4DC" : "sleep mode";
   }
 
-  return value;
+  return describeGeneralSuppressionReason(value, locale);
 }
 
 function formatTrackedAssets(assets: Array<"BTC" | "ETH">, locale: SupportedLocale): string {
@@ -1212,7 +1233,6 @@ function formatStatus(state: TelegramUserStateSnapshot | null, locale: Supported
   }
 
   return [
-    `User: ${state.telegramUserId}`,
     messages.status.trackedAssets(
       state.trackedAssets === "BTC,ETH" ? "BTC, ETH" : state.trackedAssets,
     ),
@@ -1221,18 +1241,205 @@ function formatStatus(state: TelegramUserStateSnapshot | null, locale: Supported
       state.cash === null ? messages.booleans.notSet : formatNumberForLocale(locale, state.cash),
     ),
     messages.command.statusPrompt,
+    messages.status.recordOnly,
   ].join("\n");
 }
 
 function formatDecisionLine(line: TelegramLastDecisionSnapshot["lines"][number], locale: SupportedLocale): string {
   return [
-    `${line.asset}: ${describeDecisionVerdict(line.status, locale)}`,
-    `status ${line.status}`,
-    `${line.alertOutcome}${line.suppressedBy ? ` (${line.suppressedBy})` : ""}`,
-    `when ${formatCompactTimestampForLocale(locale, line.createdAt)}`,
-    `summary ${truncateText(line.summary, 90)}`,
-    `regime ${line.regime ?? getMessages(locale).booleans.notAvailable} | trigger ${line.triggerState ?? getMessages(locale).booleans.notAvailable} | invalidation ${line.invalidationState ?? getMessages(locale).booleans.notAvailable}`,
-  ].join(" | ");
+    `${line.asset} | ${describeDecisionVerdict(line.status, locale)}`,
+    locale === "ko"
+      ? `시각: ${formatCompactTimestampForLocale(locale, line.createdAt)}`
+      : `When: ${formatCompactTimestampForLocale(locale, line.createdAt)}`,
+    locale === "ko"
+      ? `요약: ${truncateText(line.summary, 90)}`
+      : `Summary: ${truncateText(line.summary, 90)}`,
+    locale === "ko"
+      ? `알림 상태: ${describeAlertOutcomeForUser(line.alertOutcome, line.suppressedBy, locale)}`
+      : `Alert status: ${describeAlertOutcomeForUser(line.alertOutcome, line.suppressedBy, locale)}`,
+    locale === "ko"
+      ? `시장 흐름: ${describeRegime(line.regime, locale)} | 확인 신호: ${describeTriggerState(line.triggerState, locale)} | 무효화 기준: ${describeInvalidationState(line.invalidationState, locale)}`
+      : `Market structure: ${describeRegime(line.regime, locale)} | trigger: ${describeTriggerState(line.triggerState, locale)} | invalidation: ${describeInvalidationState(line.invalidationState, locale)}`,
+  ].join("\n");
+}
+
+function describeAlertReason(
+  reason: TelegramActionNeededReason,
+  asset: "BTC" | "ETH" | null,
+  locale: SupportedLocale,
+): string {
+  const assetLabel = asset ?? (locale === "ko" ? "설정" : "setup");
+
+  if (reason === "SETUP_INCOMPLETE") {
+    return locale === "ko" ? "설정 입력 필요" : "Setup update needed";
+  }
+
+  if (reason === "MISSING_MARKET_DATA") {
+    return locale === "ko" ? `${assetLabel} 시장 데이터 확인 필요` : `${assetLabel} market data needs attention`;
+  }
+
+  if (reason === "INVALID_STORED_STATE") {
+    return locale === "ko" ? `${assetLabel} 기록 수정 필요` : `${assetLabel} record needs correction`;
+  }
+
+  if (reason === "RISK_REVIEW_REQUIRED") {
+    return locale === "ko" ? `${assetLabel} 리스크 점검` : `${assetLabel} risk review`;
+  }
+
+  if (reason === "ENTRY_REVIEW_REQUIRED") {
+    return locale === "ko" ? `${assetLabel} 진입 검토` : `${assetLabel} entry review`;
+  }
+
+  if (reason === "ADD_BUY_REVIEW_REQUIRED") {
+    return locale === "ko" ? `${assetLabel} 추가매수 검토` : `${assetLabel} add-buy review`;
+  }
+
+  if (reason === "REDUCE_REVIEW_REQUIRED") {
+    return locale === "ko" ? `${assetLabel} 축소 검토` : `${assetLabel} reduce review`;
+  }
+
+  return locale === "ko" ? `${assetLabel} 상태 업데이트 안내` : `${assetLabel} state update reminder`;
+}
+
+function describeAlertOutcomeForUser(
+  outcome: TelegramLastDecisionSnapshot["lines"][number]["alertOutcome"],
+  suppressedBy: string | null,
+  locale: SupportedLocale,
+): string {
+  if (outcome === "sent") {
+    return locale === "ko" ? "전송됨" : "Sent";
+  }
+
+  if (outcome === "not_applicable") {
+    return locale === "ko" ? "해당 없음" : "Not applicable";
+  }
+
+  if (!suppressedBy) {
+    return locale === "ko" ? "보류됨" : "Skipped";
+  }
+
+  return locale === "ko"
+    ? `보류됨 (${describeGeneralSuppressionReason(suppressedBy, locale)})`
+    : `Skipped (${describeGeneralSuppressionReason(suppressedBy, locale)})`;
+}
+
+function describeRegime(value: string | null, locale: SupportedLocale): string {
+  if (!value) {
+    return locale === "ko" ? "정보 없음" : "n/a";
+  }
+
+  const labels: Record<string, { ko: string; en: string }> = {
+    BULL_TREND: { ko: "상승 추세", en: "bull trend" },
+    PULLBACK_IN_UPTREND: { ko: "상승 추세 안 조정", en: "pullback in uptrend" },
+    EARLY_RECOVERY: { ko: "초기 회복 구간", en: "early recovery" },
+    RECLAIM_ATTEMPT: { ko: "재돌파 시도 구간", en: "reclaim attempt" },
+    RANGE: { ko: "횡보 구간", en: "range" },
+    WEAK_DOWNTREND: { ko: "약한 하락 추세", en: "weak downtrend" },
+    BREAKDOWN_RISK: { ko: "붕괴 위험 구간", en: "breakdown risk" },
+  };
+
+  return locale === "ko"
+    ? (labels[value]?.ko ?? value)
+    : (labels[value]?.en ?? value.toLowerCase());
+}
+
+function describeTriggerState(value: string | null, locale: SupportedLocale): string {
+  if (!value) {
+    return locale === "ko" ? "정보 없음" : "n/a";
+  }
+
+  const labels: Record<string, { ko: string; en: string }> = {
+    CONFIRMED: { ko: "확인됨", en: "confirmed" },
+    PENDING: { ko: "아직 확인 전", en: "pending" },
+    WAITING: { ko: "대기 중", en: "waiting" },
+    BEARISH_CONFIRMATION: { ko: "약세 확인", en: "bearish confirmation" },
+    NOT_APPLICABLE: { ko: "해당 없음", en: "not applicable" },
+  };
+
+  return locale === "ko"
+    ? (labels[value]?.ko ?? value)
+    : (labels[value]?.en ?? value.toLowerCase());
+}
+
+function describeInvalidationState(value: string | null, locale: SupportedLocale): string {
+  if (!value) {
+    return locale === "ko" ? "정보 없음" : "n/a";
+  }
+
+  const labels: Record<string, { ko: string; en: string }> = {
+    CLEAR: { ko: "선명함", en: "clear" },
+    UNCLEAR: { ko: "아직 흐림", en: "unclear" },
+    BROKEN: { ko: "이미 깨짐", en: "broken" },
+  };
+
+  return locale === "ko"
+    ? (labels[value]?.ko ?? value)
+    : (labels[value]?.en ?? value.toLowerCase());
+}
+
+function describeMarketDataStatus(
+  value: TelegramHourlyHealthSnapshot["marketDataStatus"],
+  locale: SupportedLocale,
+): string {
+  if (!value) {
+    return locale === "ko" ? "정보 없음" : "n/a";
+  }
+
+  const labels: Record<NonNullable<TelegramHourlyHealthSnapshot["marketDataStatus"]>, { ko: string; en: string }> = {
+    ok: { ko: "정상", en: "ok" },
+    no_data: { ko: "데이터 없음", en: "no data" },
+    fetch_failure: { ko: "가져오기 실패", en: "fetch failure" },
+    normalization_failure: { ko: "정리 실패", en: "normalization failure" },
+  };
+
+  return locale === "ko" ? labels[value].ko : labels[value].en;
+}
+
+function formatLatestNotificationSummary(
+  latestNotification: NonNullable<TelegramHourlyHealthSnapshot["latestNotification"]>,
+  locale: SupportedLocale,
+): string {
+  const parts = [
+    latestNotification.deliveryStatus === "SENT"
+      ? locale === "ko" ? "전송됨" : "Sent"
+      : locale === "ko" ? "보류됨" : "Skipped",
+    latestNotification.suppressedBy
+      ? describeGeneralSuppressionReason(latestNotification.suppressedBy, locale)
+      : null,
+    latestNotification.sentAt
+      ? formatCompactTimestampForLocale(locale, latestNotification.sentAt)
+      : null,
+  ];
+
+  return parts.filter((part): part is string => Boolean(part)).join(" | ");
+}
+
+function describeGeneralSuppressionReason(value: string, locale: SupportedLocale): string {
+  if (value === "cooldown") {
+    return locale === "ko" ? "쿨다운 중" : "cooldown";
+  }
+
+  if (value === "sleep_mode") {
+    return locale === "ko" ? "수면 모드" : "sleep mode";
+  }
+
+  if (value === "missing_chat_id") {
+    return locale === "ko" ? "채팅 연결 필요" : "chat link needed";
+  }
+
+  if (value === "below_repeat_threshold") {
+    return locale === "ko" ? "반복 횟수 부족" : "below repeat threshold";
+  }
+
+  if (value === "state_changed") {
+    return locale === "ko" ? "저장 상태가 바뀜" : "state changed";
+  }
+
+  if (value === "primary_alert_sent") {
+    return locale === "ko" ? "주 알림 먼저 전송됨" : "primary alert already sent";
+  }
+
+  return value;
 }
 
 function truncateText(value: string, limit: number): string {

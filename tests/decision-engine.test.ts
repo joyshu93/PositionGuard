@@ -234,10 +234,11 @@ assertEqual(
   "Strong entry setups should clear straight into immediate review.",
 );
 assert(
-  immediateEntryDecision.alert?.message.includes("Action zone:")
-    && immediateEntryDecision.alert?.message.includes("First staged size (available cash):")
-    && immediateEntryDecision.alert?.message.includes("Invalidation:")
-    && immediateEntryDecision.alert?.message.includes("Chase guard:"),
+  immediateEntryDecision.alert?.message.includes("Review zone:")
+    && immediateEntryDecision.alert?.message.includes("First review amount:")
+    && immediateEntryDecision.alert?.message.includes("Current maximum additional amount:")
+    && immediateEntryDecision.alert?.message.includes("Invalidation guide:")
+    && immediateEntryDecision.alert?.message.includes("Chase warning:"),
   "Immediate entry alerts should include structured execution guidance.",
 );
 assertEqual(
@@ -284,8 +285,8 @@ assertEqual(
   "Add execution guidance should stay at the default ratio when total equity only slightly exceeds available cash.",
 );
 assert(
-  immediateAddDecision.alert?.message.includes("Remaining buy capacity (available cash):"),
-  "Add execution alerts should explain the remaining buy capacity against current available cash.",
+  immediateAddDecision.alert?.message.includes("Current maximum additional amount:"),
+  "Add execution alerts should explain the current additional buying ceiling in plain language.",
 );
 
 const elevatedEquityAddDecision = runDecisionEngine(
@@ -351,8 +352,8 @@ assertCloseTo(
   "Add execution guidance should surface the remaining buy capacity against available cash.",
 );
 assert(
-  cappedAddDecision.alert?.message.includes("Remaining buy capacity (available cash): 6.5%"),
-  "Capped add alerts should surface the clipped buy-capacity percentage.",
+  cappedAddDecision.alert?.message.includes("Current maximum review amount: about 65,000 KRW"),
+  "Capped add alerts should surface the clipped buy-cap amount directly as money.",
 );
 
 const deferredEntryDecision = runDecisionEngine(
@@ -556,8 +557,8 @@ assertEqual(
 );
 assert(
   (reduceDecision.executionGuide?.planType === "REDUCE" || reduceDecision.executionGuide?.planType === "EXIT_PLAN")
-    && reduceDecision.alert?.message.includes("Invalidation:")
-    && reduceDecision.alert?.message.includes("Chase guard:"),
+    && reduceDecision.alert?.message.includes("Invalidation guide:")
+    && reduceDecision.alert?.message.includes("Chase warning:"),
   "Reduce-side alerts should also include structured guidance.",
 );
 
@@ -600,10 +601,11 @@ const koreanConfirmedEntryDecision = runDecisionEngine(
 
 assert(
   koreanConfirmedEntryDecision.summary.includes("진입 검토")
-    && koreanConfirmedEntryDecision.alert?.message.includes("행동 구간:")
-    && koreanConfirmedEntryDecision.alert?.message.includes("첫 분할(남은 예수금 기준):")
-    && koreanConfirmedEntryDecision.alert?.message.includes("무효화:")
-    && koreanConfirmedEntryDecision.alert?.message.includes("추격 금지:")
+    && koreanConfirmedEntryDecision.alert?.message.includes("검토 구간:")
+    && koreanConfirmedEntryDecision.alert?.message.includes("1차 검토 금액:")
+    && koreanConfirmedEntryDecision.alert?.message.includes("현재 최대 추가 가능 금액:")
+    && koreanConfirmedEntryDecision.alert?.message.includes("무효화 기준:")
+    && koreanConfirmedEntryDecision.alert?.message.includes("추격 주의:")
     && koreanConfirmedEntryDecision.alert?.message.includes("진입 무효화 기준")
     && !koreanConfirmedEntryDecision.alert?.message.includes("entry review")
     && !koreanConfirmedEntryDecision.alert?.message.includes("Wait for the structure"),
@@ -617,7 +619,7 @@ assert(
     asset: "BTC",
     summary: "BTC entry review is justified and the deferred confirmation has now been satisfied.",
     nextStep: "Keep it staged, confirm the invalidation level first, and avoid chasing the upper end of the range.",
-  }).includes("ACTION NEEDED: BTC entry review is needed"),
+  }).includes("Review needed: BTC entry review is needed"),
   "Telegram alert headlines should keep the expected coaching headline.",
 );
 

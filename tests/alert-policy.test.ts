@@ -225,7 +225,7 @@ const message = buildActionNeededMessage({
 });
 
 assert(
-  !message.includes("No trade was executed.") && message.includes("record-only guidance"),
+  !message.includes("No trade was executed.") && message.includes("This only updates your record. No trades are executed."),
   "ACTION_NEEDED message should stay record-only without the removed no-execution sentence.",
 );
 assert(
@@ -235,7 +235,7 @@ assert(
     asset: null,
     summary: "Manual setup is incomplete; waiting for user-reported inputs.",
     nextStep: "Use /setcash and /setposition to finish setup.",
-  }).includes("record-only guidance"),
+  }).includes("This only updates your record. No trades are executed."),
   "Telegram alert text should preserve the record-only boundary.",
 );
 
@@ -389,6 +389,7 @@ assert(
   reminderPlan.message?.includes("/setposition") &&
     reminderPlan.message?.includes("/setcash") &&
     !reminderPlan.message?.includes("No trade was executed.") &&
+    reminderPlan.message?.includes("This only updates your record. No trades are executed.") &&
     reminderPlan.message?.includes("stored manual state"),
   "Reminder messages should point to manual state update commands without the removed no-execution sentence.",
 );

@@ -102,15 +102,57 @@ function formatRecentNotifications(
   return [
     messages.status.recentAlertsTitle,
     ...recentNotifications.map((notification) => {
-      const reason = notification.reasonKey ?? messages.booleans.notAvailable;
-      const extra = notification.suppressedBy
-        ? ` (${notification.suppressedBy})`
-        : "";
-      return messages.status.recentAlertLine(`${notification.deliveryStatus} ${reason}${extra}`);
+      const delivery = describeNotificationDelivery(notification.deliveryStatus, locale);
+      const category = describeNotificationCategory(notification.eventType, locale);
+      const suppression = notification.suppressedBy
+        ? describeNotificationSuppression(notification.suppressedBy, locale)
+        : null;
+      return messages.status.recentAlertLine(
+        [delivery, category, suppression].filter((part): part is string => Boolean(part)).join(" | "),
+      );
     }),
   ];
 }
 
 function formatTrackedAssets(trackedAssets: SupportedAsset[]): string {
   return trackedAssets.join(", ");
+}
+
+function describeNotificationDelivery(
+  deliveryStatus: RecentNotificationSummary["deliveryStatus"],
+  locale: SupportedLocale,
+): string {
+  if (deliveryStatus === "SENT") {
+    return locale === "ko" ? "전송됨" : "Sent";
+  }
+
+  return locale === "ko" ? "보류됨" : "Skipped";
+}
+
+function describeNotificationCategory(eventType: string, locale: SupportedLocale): string {
+  if (eventType === "ACTION_NEEDED") {
+    return locale === "ko" ? "시장 점검 알림" : "Market review alert";
+  }
+
+  if (eventType === "STATE_UPDATE_REMINDER") {
+    return locale === "ko" ? "상태 업데이트 안내" : "State update reminder";
+  }
+
+  return locale === "ko" ? "알림" : "Alert";
+}
+
+function describeNotificationSuppression(value: string, locale: SupportedLocale): string {
+  if (value === "cooldown") {
+    return locale === "ko" ? "쿨다운 중" : "Cooldown";
+  }
+
+  if (value === "sleep_mode") {
+    return locale === "ko" ? "수면 모드" : "Sleep mode";
+  }
+
+  if (value === "missing_chat_id") {
+    return locale === "ko" ? "채팅 연결 필요" : "Chat link needed";
+  }
+
+  return value;
 }

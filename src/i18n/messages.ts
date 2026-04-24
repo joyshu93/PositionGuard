@@ -317,7 +317,7 @@ const en: LocaleMessages = {
     trackedPositions: (assets) => `Tracked positions: ${assets}`,
     readiness: (isReady) => `Readiness: ${isReady ? "ready for coaching" : "needs setup"}`,
     nextSteps: (steps) => `Next steps: ${steps}`,
-    recordOnly: "State is record-only. No trade execution is performed.",
+    recordOnly: "This only updates your record. No trades are executed.",
   },
   status: {
     empty: [
@@ -336,7 +336,7 @@ const en: LocaleMessages = {
     recentAlertsTitle: "Recent alerts:",
     recentAlertLine: (line) => `- ${line}`,
     recentAlertsNone: "Recent alerts: none",
-    recordOnly: "State is record-only. No trade execution is performed.",
+    recordOnly: "This only updates your record. No trades are executed.",
   },
   operator: {
     lastDecisionTitle: "Last decision:",
@@ -372,7 +372,7 @@ const en: LocaleMessages = {
     noteUnknown: "status is not recognized",
   },
   alerts: {
-    actionNeededHeadline: (headline) => `ACTION NEEDED: ${headline}`,
+    actionNeededHeadline: (headline) => `Review needed: ${headline}`,
     setupIncomplete: (asset) => `${asset} setup is incomplete`,
     marketDataUnavailable: (asset) => `${asset} market snapshot is unavailable`,
     riskReview: (asset) => `${asset} risk review is needed`,
@@ -380,13 +380,13 @@ const en: LocaleMessages = {
     addBuyReview: (asset) => `${asset} add-buy review is needed`,
     reduceReview: (asset) => `${asset} reduce review is needed`,
     stateUpdateReminder: (asset) => `${asset} state update reminder is needed`,
-    manualRecordOnly: "This is record-only guidance.",
+    manualRecordOnly: "This only updates your record. No trades are executed.",
     stateReminder: (asset, signal) =>
       `PositionGuard is still seeing the same ${asset} ${signal} signal and the same stored manual state.`,
     stateReminderPosition: "If you already bought or sold, update your recorded position with /setposition.",
     stateReminderCash: "If your available cash changed, update it with /setcash.",
     stateReminderStoredState: "PositionGuard only sees your stored manual state.",
-    stateReminderRecordOnly: "This is record-only guidance.",
+    stateReminderRecordOnly: "This only updates your record. No trades are executed.",
   },
   importFlow: {
     startPrompt: [
@@ -562,7 +562,7 @@ const ko: LocaleMessages = {
     trackedPositions: (assets) => `\uCD94\uC801 \uD3EC\uC9C0\uC158: ${assets}`,
     readiness: (isReady) => `\uC900\uBE44 \uC0C1\uD0DC: ${isReady ? "\uCF54\uCE6D \uAC00\uB2A5" : "\uC124\uC815 \uD544\uC694"}`,
     nextSteps: (steps) => `\uB2E4\uC74C \uB2E8\uACC4: ${steps}`,
-    recordOnly: "\uC0C1\uD0DC \uAE30\uB85D \uC804\uC6A9\uC785\uB2C8\uB2E4. \uC8FC\uBB38 \uC2E4\uD589\uC740 \uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
+    recordOnly: "\uC774 \uBD07\uC740 \uAE30\uB85D\uB9CC \uC5C5\uB370\uC774\uD2B8\uD569\uB2C8\uB2E4. \uC8FC\uBB38\uC740 \uC2E4\uD589\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
   },
   status: {
     empty: [
@@ -581,7 +581,7 @@ const ko: LocaleMessages = {
     recentAlertsTitle: "\uCD5C\uADFC \uC54C\uB9BC:",
     recentAlertLine: (line) => `- ${line}`,
     recentAlertsNone: "\uCD5C\uADFC \uC54C\uB9BC: \uC5C6\uC74C",
-    recordOnly: "\uC0C1\uD0DC \uAE30\uB85D \uC804\uC6A9\uC785\uB2C8\uB2E4. \uC8FC\uBB38 \uC2E4\uD589\uC740 \uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
+    recordOnly: "\uC774 \uBD07\uC740 \uAE30\uB85D\uB9CC \uC5C5\uB370\uC774\uD2B8\uD569\uB2C8\uB2E4. \uC8FC\uBB38\uC740 \uC2E4\uD589\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
   },
   operator: {
     lastDecisionTitle: "\uCD5C\uADFC \uACB0\uC815:",
@@ -617,7 +617,7 @@ const ko: LocaleMessages = {
     noteUnknown: "\uC778\uC2DD\uB418\uC9C0 \uC54A\uB294 \uC0C1\uD0DC\uC785\uB2C8\uB2E4",
   },
   alerts: {
-    actionNeededHeadline: (headline) => `조치 필요: ${headline}`,
+    actionNeededHeadline: (headline) => `확인 필요: ${headline}`,
     setupIncomplete: (asset) => `${asset} \uC124\uC815\uC774 \uBBF8\uC644\uB8CC\uC785\uB2C8\uB2E4`,
     marketDataUnavailable: (asset) => `${asset} \uC2DC\uC7A5 \uC2A4\uB0C5\uC0F7\uC744 \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4`,
     riskReview: (asset) => `${asset} \uB9AC\uC2A4\uD06C \uAC80\uD1A0\uAC00 \uD544\uC694\uD569\uB2C8\uB2E4`,
@@ -625,13 +625,13 @@ const ko: LocaleMessages = {
     addBuyReview: (asset) => `${asset} \uCD94\uAC00\uB9E4\uC218 \uAC80\uD1A0\uAC00 \uD544\uC694\uD569\uB2C8\uB2E4`,
     reduceReview: (asset) => `${asset} \uCD95\uC18C \uAC80\uD1A0\uAC00 \uD544\uC694\uD569\uB2C8\uB2E4`,
     stateUpdateReminder: (asset) => `${asset} \uC0C1\uD0DC \uC5C5\uB370\uC774\uD2B8\uAC00 \uD544\uC694\uD569\uB2C8\uB2E4`,
-    manualRecordOnly: "\uC774 \uC548\uB0B4\uB294 \uAE30\uB85D \uC804\uC6A9\uC785\uB2C8\uB2E4.",
+    manualRecordOnly: "\uC774 \uBD07\uC740 \uAE30\uB85D\uB9CC \uC5C5\uB370\uC774\uD2B8\uD569\uB2C8\uB2E4. \uC8FC\uBB38\uC740 \uC2E4\uD589\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
     stateReminder: (asset, signal) =>
       `PositionGuard\uB294 \uC544\uC9C1\uB3C4 ${asset} ${signal} \uC2E0\uD638\uC640 \uB3D9\uC77C\uD55C \uC800\uC7A5 \uC0C1\uD0DC\uB97C \uBCF4\uACE0 \uC788\uC2B5\uB2C8\uB2E4.`,
     stateReminderPosition: "\uC774\uBBF8 \uB9E4\uC218\uB098 \uB9E4\uB3C4\uB97C \uD588\uB2E4\uBA74 /setposition \uC73C\uB85C \uAE30\uB85D\uC744 \uAC31\uC2E0\uD574 \uC8FC\uC138\uC694.",
     stateReminderCash: "\uC0AC\uC6A9 \uAC00\uB2A5 \uD604\uAE08\uC774 \uBC14\uB00C\uC5C8\uB2E4\uBA74 /setcash \uB85C \uAC31\uC2E0\uD574 \uC8FC\uC138\uC694.",
     stateReminderStoredState: "PositionGuard\uB294 \uC800\uC7A5\uB41C \uC218\uB3D9 \uC0C1\uD0DC\uB9CC \uBCFC \uC218 \uC788\uC2B5\uB2C8\uB2E4.",
-    stateReminderRecordOnly: "\uC774 \uC548\uB0B4\uB294 \uAE30\uB85D \uC804\uC6A9\uC785\uB2C8\uB2E4.",
+    stateReminderRecordOnly: "\uC774 \uBD07\uC740 \uAE30\uB85D\uB9CC \uC5C5\uB370\uC774\uD2B8\uD569\uB2C8\uB2E4. \uC8FC\uBB38\uC740 \uC2E4\uD589\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
   },
   importFlow: {
     startPrompt: [
